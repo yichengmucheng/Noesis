@@ -1,0 +1,32 @@
+services:
+  neo4j_2:
+    image: neo4j:5-community
+    container_name: neo4j_2
+    restart: unless-stopped
+    ports:
+      - "7476:7474"   # 浏览器界面
+      - "7689:7687"   # Bolt 协议
+    environment:
+      NEO4J_AUTH: neo4j/neo4j123   # 自定义密码
+    volumes:
+      - ./neo4j_data:/data
+
+  lightrag_2:
+    image: lightrag_3:v1.0
+    container_name: lightrag_2
+    depends_on:
+      - neo4j_2
+    ports:
+      - "8007:9621"
+    env_file:
+      - .env
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/inputs:/app/data/inputs
+      - ./data/tiktoken:/app/data/tiktoken
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+      - ./lightrag:/app/lightrag
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
