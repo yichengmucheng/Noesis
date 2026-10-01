@@ -1,0 +1,130 @@
+{
+  "ci": {
+    "vector": {
+      "floor": 0.25,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "keyword": {
+      "floor": 0.15,
+      "temperature": 0.06,
+      "signal": "keyword"
+    },
+    "hybrid": {
+      "floor": 0.22,
+      "temperature": 0.08,
+      "signal": "blend",
+      "floors": {
+        "0": 0.15,
+        "0.25": 0.18,
+        "0.5": 0.22,
+        "0.75": 0.24,
+        "1": 0.25
+      }
+    },
+    "mix": {
+      "floor": 0.25,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "tree": {
+      "floor": 0.25,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "graph": {
+      "floor": 0.25,
+      "temperature": 0.08,
+      "signal": "max"
+    },
+    "rerank": {
+      "floor": 0.05,
+      "temperature": 0.05,
+      "signal": "rerank"
+    }
+  },
+  "bge-m3": {
+    "vector": {
+      "floor": 0.5604,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "keyword": {
+      "floor": 0.3351,
+      "temperature": 0.06,
+      "signal": "keyword"
+    },
+    "hybrid": {
+      "floor": 0.5604,
+      "temperature": 0.08,
+      "signal": "blend"
+    },
+    "mix": {
+      "floor": 0.5604,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "tree": {
+      "floor": 0.5604,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "graph": {
+      "floor": 0.5604,
+      "temperature": 0.08,
+      "signal": "max"
+    }
+  },
+  "qwen3-embedding-4b": {
+    "binding": {
+      "embedding_provider": "siliconflow",
+      "embedding_model": "Qwen/Qwen3-Embedding-4B",
+      "embedding_dimension": 1024,
+      "rerank_model": "Qwen/Qwen3-Reranker-4B",
+      "provider": "siliconflow",
+      "score_type": "rerank"
+    },
+    "vector": {
+      "floor": 0.5473,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "keyword": {
+      "floor": 0.3858,
+      "temperature": 0.06,
+      "signal": "keyword"
+    },
+    "mix": {
+      "floor": 0.5473,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "tree": {
+      "floor": 0.5473,
+      "temperature": 0.08,
+      "signal": "vector"
+    },
+    "graph": {
+      "floor": 0.265,
+      "temperature": 0.08,
+      "signal": "max"
+    },
+    "hybrid": {
+      "floor": 0.295,
+      "temperature": 0.08,
+      "signal": "blend",
+      "floors": {
+        "0": 0.3858,
+        "0.25": 0.1425,
+        "0.5": 0.295,
+        "0.75": 0.4176,
+        "1": 0.5473
+      }
+    },
+    "rerank": {
+      "floor": 0.0115,
+      "temperature": 0.05,
+      "signal": "rerank"
+    }
+  }
+}
