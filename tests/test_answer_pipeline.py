@@ -80,7 +80,7 @@ def test_cache_requires_version_and_live_chunks():
         "kb_id": "kb",
         "tenant": "default",
         "kb_version": "v1",
-        "prompt_version": "answer-v1",
+        "prompt_version": "answer-v2",
         "model": "qwen",
         "mode": "hybrid",
         "chunk_ids": ["c1"],
