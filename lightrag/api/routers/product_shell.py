@@ -127,6 +127,8 @@ def _default_settings() -> dict[str, Any]:
         "mark_number_changes": True,
         "audit_auto_pass": False,
         "audit_reject_comment": True,
+        "answer_detail": "standard",
+        "show_citations": True,
     }
 
 
@@ -535,6 +537,7 @@ class ChatBody(BaseModel):
     history: list[dict[str, Any]] = Field(default_factory=list)
     stream: Optional[bool] = False
     session_id: Optional[str] = None
+    answer_detail: Optional[str] = None
 
 
 class SearchBody(BaseModel):
@@ -575,6 +578,9 @@ class GraphConfigBody(BaseModel):
 
 
 def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None):
+    router.routes.clear()
+    router.dependencies.clear()
+    router._product_guard = False
     store = ShellStore(rag.working_dir)
     input_dir = Path(doc_manager.input_dir)
     saved: dict[str, Any] = {}
@@ -1235,9 +1241,59 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     **payload,
                 })
         items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
-        total = len(items)
+        from lightrag.index_manifest import compatibility_error
+        from lightrag.product_parse import load_document
+        from lightrag.product_source import mime_of
+
+        blocked = compatibility_error(Path(rag.working_dir))
+        index_status = "index_rebuild_required" if blocked else "ready"
+        visible = []
+        for item in items:
+            document = load_document(rag.working_dir, item["id"])
+            view = {key: value for key, value in item.items() if key != "file_path"}
+            view["mime_type"] = mime_of(item.get("name") or "", document.source_type if document else "")
+            view["version_id"] = document.version_id if document else ""
+            view["version"] = view["version_id"] or item.get("version") or ""
+            view["unit_count"] = len(document.walk()) if document else 0
+            view["index_status"] = index_status
+            visible.append(view)
+        total = len(visible)
         start = max(page - 1, 0) * page_size
-        return {"items": items[start : start + page_size], "total": total}
+        return {"items": visible[start : start + page_size], "total": total}
+
+    @router.get("/documents/{doc_id}/source")
+    async def document_source(
+        doc_id: str,
+        kb_id: str,
+        version_id: str = "",
+        chunk_id: str = "",
+        unit_id: str = "",
+    ):
+        from lightrag.product_parse import load_document
+        from lightrag.product_source import build_source_view
+
+        data = await _read()
+        _find_kb(data, kb_id)
+        row = (data.get("doc_index") or {}).get(doc_id)
+        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        owner = str(row.get("owner_id") or "")
+        if owner and owner != actor_id():
+            raise HTTPException(status_code=404, detail="来源不存在")
+        storage = str(row.get("storage_key") or "")
+        if storage:
+            path = Path(storage)
+            if not path.is_file():
+                raise HTTPException(status_code=404, detail="来源不存在")
+        document = load_document(rag.working_dir, doc_id)
+        if version_id and (document is None or document.version_id != version_id):
+            raise HTTPException(status_code=404, detail="来源不存在")
+        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        payload = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
+        payload["document_id"] = doc_id
+        if document:
+            payload["version_id"] = document.version_id
+        return payload
 
     @router.post("/documents")
     async def upload_document(
@@ -1632,6 +1688,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             if body.context_expand is not None
             else bool(settings.get("context_expand"))
         )
+        from lightrag.answer_pipeline import normalize_detail
+        from lightrag.index_manifest import load_manifest
+        from lightrag.product_parse import load_document
+
+        detail = normalize_detail(body.answer_detail or settings.get("answer_detail"))
+        manifest = load_manifest(Path(rag.working_dir))
+        index_version = str((manifest or {}).get("corpus_revision") or "")
+        owner = str(kb.get("owner_id") or actor_id())
         bindings = data.get("file_bindings") or {}
         session_id = (body.session_id or f"{body.kb_id}:default").strip()
         summary = ((data.get("sessions") or {}).get(session_id) or {}).get("summary")
@@ -1649,6 +1713,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
 
         kb_chunks = await _kb_chunks(body.kb_id, data)
         version = await _kb_version(body.kb_id, data)
+        doc_ids = {str(item.get("document_id") or item.get("doc_id") or "") for item in kb_chunks}
+        doc_ids.update(str(key) for key in (data.get("doc_index") or {}))
+        live_versions = {}
+        for doc_id in doc_ids:
+            if not doc_id:
+                continue
+            document = load_document(rag.working_dir, doc_id)
+            if document:
+                live_versions[doc_id] = document.version_id
         done = None
         async for event in stream_answer(
             rag,
@@ -1668,11 +1741,16 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             enable_rerank=bool(rerank_enabled),
             score_threshold=score_threshold,
             expand_context=bool(expand_context),
+            detail=detail,
+            index_version=index_version,
+            owner_id=owner,
+            working_dir=Path(rag.working_dir),
+            live_versions=live_versions,
         ):
             if event.get("type") == "done":
                 done = event
             yield event
-        if not done:
+        if not done or done.get("complete") is False:
             return
         answer = str(done.get("answer") or "")
         fresh = await _read()
@@ -1700,6 +1778,8 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 "prompt_version": PROMPT_VERSION,
                 "model": os.getenv("LLM_MODEL") or "",
                 "mode": mode_name,
+                "detail": detail,
+                "index_version": index_version,
                 "chunk_ids": done.get("chunk_ids") or [],
                 "citations": done.get("citations") or [],
                 "answer": answer[:2000],
@@ -1728,6 +1808,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     rewritten = event.get("rewritten") or rewritten
                 elif event.get("type") == "done":
                     answer = event.get("answer") or answer
+                    citations = event.get("citations") if "citations" in event else citations
             return {
                 "answer": answer,
                 "citations": citations,

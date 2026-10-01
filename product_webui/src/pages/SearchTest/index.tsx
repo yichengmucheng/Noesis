@@ -205,7 +205,10 @@ export default function SearchTestPage() {
                         候选 稠密 {meta.retrieval?.dense_top ?? '—'} / 关键词 {meta.retrieval?.bm25_top ?? '—'} / 图谱 {meta.retrieval?.graph_top ?? '—'} / RRF {meta.retrieval?.rrf ?? '—'}
                       </div>
                       <div>重排池 {meta.retrieval?.rerank_pool ?? meta.rerank?.pool_size ?? '—'} · 最终小块 {meta.retrieval?.children ?? results.length} · 父块 {meta.retrieval?.parents ?? '—'}</div>
-                      <div>重排模型 {meta.rerank?.model || '未配置'}{meta.rerank?.applied ? ' · 已执行' : ''}</div>
+                      <div>重排模型 {meta.rerank?.model || meta.rerank_model || '未配置'}{meta.rerank?.applied ? ' · 已执行' : ''}</div>
+                      <div>嵌入模型 {meta.embedding_model || '—'}</div>
+                      <div>索引版本 {meta.index_version || '—'}</div>
+                      <div>最终结果 {meta.retrieval?.children ?? results.length}</div>
                       {meta.timings ? <div>耗时 {Object.entries(meta.timings).map(([key, value]) => `${key} ${value}ms`).join(' · ')}</div> : null}
                       {results.map((chunk, i) => (
                         <div key={chunk.chunk_id || i} style={{ marginTop: 8 }}>

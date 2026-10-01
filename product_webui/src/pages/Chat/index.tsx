@@ -87,6 +87,7 @@ export default function ChatPage() {
         enable_rerank: current?.rerank_enabled,
         similarity_threshold: current?.similarity_threshold,
         context_expand: current?.context_expand,
+        answer_detail: current?.answer_detail === 'brief' ? 'concise' : current?.answer_detail === 'normal' || !current?.answer_detail ? 'standard' : current.answer_detail,
         history,
         session_id: sessionId,
       })
@@ -127,8 +128,13 @@ export default function ChatPage() {
             citations = event.citations || []
             degraded = Boolean(event.degraded)
           }
-          if (event.type === 'token') {
-            answer += event.text || ''
+          if (event.type === 'token') answer += event.text || ''
+          if (event.type === 'done') {
+            if (event.answer) answer = event.answer
+            if (event.citations) citations = event.citations
+            if (event.answerable === false) citations = []
+          }
+          if (event.type === 'token' || event.type === 'done') {
             const snapshot = answer
             const cites = citations
             setMessages(prev => [
@@ -240,7 +246,27 @@ export default function ChatPage() {
                       </div>
                     ) : null}
                     {msg.content ? (
-                      <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</Paragraph>
+                      <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                        {msg.content.split(/(\[C\d+\])/g).map((part, partIndex) => {
+                          const mark = part.match(/^\[(C\d+)\]$/)
+                          if (!mark) return <span key={partIndex}>{part}</span>
+                          const cited = msg.citations?.find(item => item.citation_id === mark[1])
+                          if (!cited) return <span key={partIndex}>{part}</span>
+                          const position = (msg.citations || []).indexOf(cited)
+                          return (
+                            <Button
+                              key={partIndex}
+                              type="link"
+                              size="small"
+                              style={{ padding: 0, height: 'auto' }}
+                              data-testid="citation-mark"
+                              onClick={() => setSource({ citation: cited, index: position + 1 })}
+                            >
+                              {part}
+                            </Button>
+                          )
+                        })}
+                      </Paragraph>
                     ) : null}
                     {msg.stopped ? <Text type="secondary">已停止</Text> : null}
                   </div>
@@ -347,11 +373,11 @@ export default function ChatPage() {
             <Text>回答详细程度</Text>
             <Radio.Group
               style={{ display: 'block', marginTop: 8 }}
-              value={settings?.answer_detail || 'normal'}
+              value={settings?.answer_detail === 'brief' ? 'concise' : settings?.answer_detail === 'normal' || !settings?.answer_detail ? 'standard' : settings.answer_detail}
               onChange={(event) => savePrefs({ answer_detail: event.target.value })}
             >
-              <Radio.Button value="brief">简要</Radio.Button>
-              <Radio.Button value="normal">标准</Radio.Button>
+              <Radio.Button value="concise">简洁</Radio.Button>
+              <Radio.Button value="standard">标准</Radio.Button>
               <Radio.Button value="detailed">详细</Radio.Button>
             </Radio.Group>
           </div>
@@ -369,6 +395,7 @@ export default function ChatPage() {
         open={Boolean(source)}
         citation={source?.citation || null}
         index={source?.index || 1}
+        kbId={kbId}
         onClose={() => setSource(null)}
       />
     </div>

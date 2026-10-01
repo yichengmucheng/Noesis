@@ -50,7 +50,7 @@ def _forbid(text: str) -> None:
 
 
 def test_product_navigation_account_jobs_chat(tmp_path):
-    if "9621" in os.getenv("PORT", ""):
+    if PORT == 9621:
         pytest.fail("这个测试不能连接 9621")
     _free(PORT)
     root = tmp_path / "product-ui"
@@ -133,6 +133,11 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                         "status": "ready",
                         "created_at": "2026-01-01T00:00:00+00:00",
                         "updated_at": "2026-01-02T00:00:00+00:00",
+                        "mime_type": "text/plain",
+                        "file_size": 120,
+                        "unit_count": 2,
+                        "index_status": "ready",
+                        "version_id": "ver-1",
                     }],
                     "total": 1,
                 }, ensure_ascii=False))
@@ -179,23 +184,66 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             }, ensure_ascii=False))
 
         held = []
+        bodies = []
 
         def chat(route):
             body = json.loads(route.request.post_data or "{}")
+            bodies.append(body)
             query = body.get("query") or ""
             if query == "停一下":
                 held.append(route)
                 return
             if query == "没有资料":
-                payload = 'data: {"type":"meta","citations":[]}\n\n'
+                payload = 'data: {"type":"meta","citations":[],"answerable":false}\n\n'
             elif query == "失败问题":
                 payload = 'data: {"type":"error","message":"问答服务暂时不可用"}\n\n'
+            elif query == "编号问题":
+                payload = (
+                    'data: {"type":"meta","answerable":true,"citations":[{"citation_id":"C1","doc_name":"笔记.txt","document_id":"doc-1","chunk_id":"c1","unit_id":"t1","excerpt":"命中句子"}]}\n\n'
+                    'data: {"type":"token","text":"答案见 [C1]"}\n\n'
+                    'data: {"type":"done","answer":"答案见 [C1]","answerable":true,"complete":true,"citations":[{"citation_id":"C1","doc_name":"笔记.txt","document_id":"doc-1","chunk_id":"c1","unit_id":"t1","excerpt":"命中句子"}]}\n\n'
+                )
+            elif query == "无位置":
+                payload = (
+                    'data: {"type":"token","text":"没有坐标 [C1]"}\n\n'
+                    'data: {"type":"done","answer":"没有坐标 [C1]","answerable":true,"citations":[{"citation_id":"C1","doc_name":"旧笔记.txt","document_id":"doc-1","chunk_id":"c1","unit_id":"none","excerpt":"旧摘录"}]}\n\n'
+                )
+            elif query == "失效来源":
+                payload = (
+                    'data: {"type":"token","text":"旧引用 [C1]"}\n\n'
+                    'data: {"type":"done","answer":"旧引用 [C1]","answerable":true,"citations":[{"citation_id":"C1","doc_name":"已删.txt","document_id":"doc-gone","chunk_id":"c9","excerpt":"已删除摘录"}]}\n\n'
+                )
             else:
                 payload = (
                     'data: {"type":"meta","citations":[{"doc_name":"笔记.txt","excerpt":"命中句子","parent_content":"所在章节的补充","page_number":3}]}\n\n'
                     'data: {"type":"token","text":"答案见 [1]"}\n\n'
                 )
             route.fulfill(status=200, content_type="text/event-stream", body=payload)
+
+        def source(route):
+            if "doc-gone" in route.request.url:
+                route.fulfill(status=404, content_type="application/json", body='{"detail":"来源不存在"}')
+                return
+            if "unit_id=none" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "doc_name": "旧笔记.txt",
+                    "source_kind": "text",
+                    "unit": {"page_number": None, "slide_number": None, "section_path": [], "line_start": None, "bbox": None},
+                    "matched_chunk": {"excerpt": "旧摘录"},
+                    "parent_context": "",
+                    "source_text": "",
+                    "preview": {"available": False, "kind": "none", "url": None},
+                }, ensure_ascii=False))
+                return
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                "doc_name": "笔记.txt",
+                "source_kind": "text",
+                "unit": {"page_number": None, "line_start": 4, "line_end": 4, "section_path": ["冷却系统"]},
+                "matched_chunk": {"excerpt": "命中句子"},
+                "parent_context": "所在章节的补充",
+                "source_text": "命中句子",
+                "preview": {"available": False, "kind": "text", "url": None},
+            }, ensure_ascii=False))
 
         def search(route):
             calls["search"] += 1
@@ -229,16 +277,23 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 },
                 "rerank": {"model": "test-rerank", "applied": True, "pool_size": 40},
                 "timings": {"retrieve": 3},
+                "index_version": "rev-1",
+                "embedding_model": "Qwen/Qwen3-Embedding-4B",
             }, ensure_ascii=False))
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(args=["--no-proxy-server"])
-            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                permissions=["clipboard-read", "clipboard-write"],
+            )
+            page = context.new_page()
             page.route("**/api/v1/kb/**/jobs**", jobs)
             page.route("**/api/v1/jobs/**", jobs)
             page.route("**/api/v1/kb/purge-jobs/**", checks)
             page.route("**/api/v1/chat/stream", chat)
             page.route(re.compile(r"/api/v1/documents"), documents)
+            page.route(re.compile(r"/api/v1/documents/.+/source"), source)
             page.goto(f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded")
             page.get_by_test_id("auth-switch").click()
             page.get_by_test_id("email").fill("ui.browser@example.com")
@@ -274,6 +329,10 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_text("笔记.txt").first.click()
             page.get_by_test_id("doc-detail").wait_for()
             page.get_by_text("切块 3").wait_for()
+            page.get_by_text("文件类型 text/plain").wait_for()
+            page.get_by_text("位置单元 2").wait_for()
+            page.get_by_text("大小 120 字节").wait_for()
+            page.get_by_text("版本 ver-1").wait_for()
             page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.get_by_role("button", name="删除").click()
             with page.expect_response(lambda item: item.request.method == "DELETE") as deleted:
@@ -319,6 +378,8 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             assert "path-1" in diag
             assert "admission" in diag
             assert "test-rerank" in diag
+            assert "rev-1" in diag
+            assert "Qwen/Qwen3-Embedding-4B" in diag
 
             page.get_by_test_id("nav-chat").click()
             page.get_by_role("heading", name="问答").wait_for()
@@ -337,10 +398,53 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             assert "补充上下文" in drawer
             page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.get_by_test_id("chat-copy").click()
+            copied = page.evaluate("() => navigator.clipboard.readText()")
+            assert copied == "答案见 [1]"
             page.get_by_test_id("chat-retry").click()
             page.get_by_text("答案见 [1]").wait_for()
             page.get_by_test_id("chat-clear").click()
             assert page.get_by_text("答案见 [1]").count() == 0
+
+            box.fill("编号问题")
+            page.get_by_role("button", name="发送").click()
+            page.get_by_text("答案见 [C1]").wait_for()
+            page.get_by_test_id("citation-mark").click()
+            page.get_by_test_id("source-drawer").wait_for()
+            located = page.get_by_test_id("source-drawer").inner_text()
+            assert "笔记.txt" in located
+            assert "第4行" in located
+            assert "命中句子" in located
+            assert "打开原文" not in located
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+
+            box.fill("无位置")
+            page.get_by_role("button", name="发送").click()
+            page.get_by_text("没有坐标 [C1]").wait_for()
+            page.get_by_test_id("citation-mark").last.click()
+            page.get_by_test_id("source-unlocated").wait_for()
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+
+            box.fill("失效来源")
+            page.get_by_role("button", name="发送").click()
+            page.get_by_text("旧引用 [C1]").wait_for()
+            page.get_by_test_id("citation-mark").last.click()
+            page.get_by_test_id("source-missing").wait_for()
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+
+            page.get_by_role("button", name="回答偏好").click()
+            levels = (("简洁", "concise", "简洁问题"), ("标准", "standard", "标准问题"), ("详细", "detailed", "详细问题"))
+            for index, (label, value, question) in enumerate(levels):
+                if index:
+                    page.get_by_role("button", name="回答偏好").click()
+                with page.expect_response(lambda item: item.request.method == "PUT" and item.url.endswith("/settings")) as saved:
+                    page.locator(".ant-drawer-open").get_by_text(label, exact=True).click()
+                assert saved.value.ok
+                page.locator(".ant-drawer-open .ant-drawer-close").click()
+                page.locator(".ant-drawer-open").wait_for(state="hidden")
+                box.fill(question)
+                page.get_by_role("button", name="发送").click()
+                page.get_by_text("答案见 [1]").last.wait_for()
+                assert bodies[-1]["answer_detail"] == value
 
             box.fill("停一下")
             page.get_by_role("button", name="发送").click()
@@ -355,10 +459,16 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             box.fill("没有资料")
             page.get_by_role("button", name="发送").click()
             page.get_by_test_id("chat-no-evidence").wait_for()
+            no_evidence = page.get_by_test_id("chat-no-evidence").locator("xpath=ancestor::div[2]")
+            assert no_evidence.get_by_test_id("citation-open").count() == 0
+            assert "[C" not in page.get_by_test_id("chat-no-evidence").inner_text()
             box.fill("失败问题")
             page.get_by_role("button", name="发送").click()
             page.get_by_test_id("chat-error").wait_for()
-            _forbid(page.locator("body").inner_text())
+            chat_text = page.locator("body").inner_text()
+            _forbid(chat_text)
+            for word in ("QueryPlan", "RRF", "path_id", "rerank_score", "admission_score", "Qwen/Qwen3"):
+                assert word not in chat_text
 
             page.set_viewport_size({"width": 390, "height": 844})
             page.get_by_test_id("nav-documents").click()

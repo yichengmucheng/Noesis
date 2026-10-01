@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,6 +28,20 @@ _HYDE_PROMPT = """你是故障诊断报告撰写人。根据下面的问题，�
 
 问题：{query}
 """
+
+
+def _runtime_fields(working_dir: Path | None) -> dict[str, Any]:
+    version = ""
+    if working_dir is not None:
+        from lightrag.index_manifest import load_manifest
+
+        manifest = load_manifest(Path(working_dir))
+        version = str((manifest or {}).get("corpus_revision") or "")
+    return {
+        "index_version": version,
+        "embedding_model": os.getenv("EMBEDDING_MODEL") or "",
+        "rerank_model": os.getenv("RERANK_MODEL") or "",
+    }
 
 
 def _filename(path: str) -> str:
@@ -636,6 +651,7 @@ async def run_search_test(
                 "rerank": {"enabled": bool(enable_rerank), "applied": False, "warning": None},
                 "query_plan": None,
                 "answer_context": [],
+                **_runtime_fields(Path(working_dir) if working_dir is not None else None),
             }
     if staged:
         return await _run_staged(
@@ -794,6 +810,7 @@ async def run_search_test(
         "empty_reason": None if public else "没有达到相关度要求的内容",
         "query_plan": None,
         "answer_context": [],
+        **_runtime_fields(Path(working_dir) if working_dir is not None else None),
     }
 
 
@@ -887,6 +904,7 @@ async def _run_staged(
     graph_rerank: str,
     rerank_func: Callable[..., Any] | None,
 ) -> dict[str, Any]:
+    clock = time.perf_counter()
     from lightrag.product_storage import _kv
     from lightrag.query_plan import build_query_plan, is_concept, needs_graph
     from lightrag.retrieval_admission import annotate_admission
@@ -1068,8 +1086,11 @@ async def _run_staged(
                 item["keyword_score"] = 0.0
     if kb_id or owner_id:
         hits = [item for item in hits if _record_in_kb(item, kb_id, owner_id) or not item.get("kb_id")]
+    fused_mix = mode == "mix" and use_graph
     for item in hits:
-        if item.get("rrf_score") is not None:
+        if item.get("reranked") and item.get("rerank_score") is not None and not fused_mix:
+            item["ranking_score"] = float(item["rerank_score"])
+        elif item.get("rrf_score") is not None:
             item["ranking_score"] = float(item["rrf_score"])
         elif item.get("ranking_score") is None:
             item["ranking_score"] = item.get("score")
@@ -1111,4 +1132,6 @@ async def _run_staged(
             "parents": len(contexts),
         },
         "empty_reason": None if public else "没有达到相关度要求的内容",
+        "timings": {"total": round((time.perf_counter() - clock) * 1000, 1)},
+        **_runtime_fields(Path(working_dir) if working_dir is not None else None),
     }

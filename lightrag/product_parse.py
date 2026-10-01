@@ -396,13 +396,39 @@ def _html_text(payload: bytes) -> str:
 
 
 def _text_units(text: str) -> tuple[list[SourceUnit], dict[str, Any]]:
-    pieces = [part.strip() for part in text.split("\n\n") if part.strip()]
-    if not pieces and text.strip():
-        pieces = [text.strip()]
-    units = [
-        SourceUnit(unit_id=f"t{index:04d}", unit_type="text", content=part)
-        for index, part in enumerate(pieces, start=1)
-    ]
+    units: list[SourceUnit] = []
+    buffer: list[str] = []
+    start: int | None = None
+    index = 0
+    lines = text.splitlines() or [text]
+
+    def flush(end: int) -> None:
+        nonlocal index, start
+        body = "\n".join(buffer).strip()
+        buffer.clear()
+        if not body or start is None or end < start:
+            start = None
+            return
+        index += 1
+        units.append(
+            SourceUnit(
+                unit_id=f"t{index:04d}",
+                unit_type="text",
+                content=body,
+                line_start=start,
+                line_end=end,
+            )
+        )
+        start = None
+
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            flush(number - 1)
+            continue
+        if start is None:
+            start = number
+        buffer.append(line)
+    flush(len(lines))
     return units, {"blocks": len(units)}
 
 
@@ -411,6 +437,8 @@ def _markdown_units(text: str) -> tuple[list[SourceUnit], dict[str, Any]]:
     stack: list[tuple[int, str]] = []
     buffer: list[str] = []
     counter = 0
+    start: int | None = None
+    end = 0
 
     def path() -> list[str]:
         return [name for _, name in stack]
@@ -421,13 +449,25 @@ def _markdown_units(text: str) -> tuple[list[SourceUnit], dict[str, Any]]:
         return f"{kind}{counter:04d}"
 
     def flush() -> None:
+        nonlocal counter, start
         body = "\n".join(buffer).strip()
         buffer.clear()
-        if not body:
+        if not body or start is None:
+            start = None
             return
-        units.append(SourceUnit(unit_id=take("t"), unit_type="text", section_path=path(), content=body))
+        units.append(
+            SourceUnit(
+                unit_id=take("t"),
+                unit_type="text",
+                section_path=path(),
+                content=body,
+                line_start=start,
+                line_end=end,
+            )
+        )
+        start = None
 
-    for line in text.splitlines():
+    for line_no, line in enumerate(text.splitlines(), start=1):
         heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
         if heading:
             flush()
@@ -435,11 +475,23 @@ def _markdown_units(text: str) -> tuple[list[SourceUnit], dict[str, Any]]:
             title = heading.group(2).strip()
             stack = [(item_level, item_name) for item_level, item_name in stack if item_level < level]
             stack.append((level, title))
-            units.append(SourceUnit(unit_id=take("s"), unit_type="section", section_path=path(), content=title))
+            units.append(
+                SourceUnit(
+                    unit_id=take("s"),
+                    unit_type="section",
+                    section_path=path(),
+                    content=title,
+                    line_start=line_no,
+                    line_end=line_no,
+                )
+            )
             continue
         if not line.strip():
             flush()
             continue
+        if start is None:
+            start = line_no
+        end = line_no
         buffer.append(line)
     flush()
     return units, {"blocks": len(units)}

@@ -505,9 +505,12 @@ export default function DocumentsPage() {
           <Space direction="vertical" style={{ width: '100%' }} data-testid="doc-detail">
             <Text strong style={{ overflowWrap: 'anywhere' }}>{detail.name}</Text>
             <Text>状态 {detail.status || '—'}</Text>
+            <Text>文件类型 {detail.mime_type || '—'}</Text>
+            <Text>大小 {detail.file_size != null ? `${detail.file_size} 字节` : '—'}</Text>
             <Text>切块 {detail.chunk_count ?? 0}</Text>
-            <Text>字符 {detail.char_count ?? 0}</Text>
-            {detail.version ? <Text>版本 {detail.version}</Text> : null}
+            <Text>位置单元 {detail.unit_count ?? 0}</Text>
+            <Text>索引 {detail.index_status === 'index_rebuild_required' ? '需要重新构建索引' : detail.index_status || '—'}</Text>
+            {detail.version_id || detail.version ? <Text>版本 {detail.version_id || detail.version}</Text> : null}
             <Text>创建 {detail.created_at ? dayjs(detail.created_at).format('YYYY-MM-DD HH:mm') : '—'}</Text>
             <Text>更新 {detail.updated_at ? dayjs(detail.updated_at).format('YYYY-MM-DD HH:mm') : '—'}</Text>
             {detail.error_msg ? <Text type="danger" style={{ overflowWrap: 'anywhere' }}>{detail.error_msg}</Text> : null}

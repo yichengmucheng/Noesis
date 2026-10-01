@@ -20,6 +20,10 @@ export interface Document {
   error_msg?: string
   file_path?: string
   job_id?: string
+  mime_type?: string
+  version_id?: string
+  unit_count?: number
+  index_status?: string
   version?: string
 }
 
@@ -104,9 +108,13 @@ export interface SearchResult extends GraphPath {
 }
 
 export interface Citation {
+  citation_id?: string
   doc_name?: string
   document_id?: string
+  version_id?: string
   chunk_id?: string
+  unit_id?: string
+  evidence_ref?: Record<string, unknown>
   excerpt?: string
   page_number?: number
   page_num?: number
@@ -114,8 +122,34 @@ export interface Citation {
   section_path?: string[]
   sheet_name?: string
   cell_range?: string
+  bbox?: number[] | null
+  line_start?: number | null
+  line_end?: number | null
+  location?: {
+    page_number?: number | null
+    slide_number?: number | null
+    section_path?: string[]
+    sheet_name?: string
+    cell_range?: string
+    bbox?: number[] | null
+    line_start?: number | null
+    line_end?: number | null
+  }
   parent_id?: string
   parent_content?: string
+}
+
+export interface DocumentSource {
+  document_id?: string
+  version_id?: string
+  doc_name?: string
+  mime_type?: string
+  source_kind?: string
+  unit?: Citation['location'] & { unit_id?: string }
+  matched_chunk?: { chunk_id?: string; excerpt?: string }
+  parent_context?: string
+  source_text?: string
+  preview?: { available?: boolean; kind?: string; url?: string | null }
 }
 
 export interface IndexStatus {
@@ -135,6 +169,8 @@ export interface ChatEvent {
   text?: string
   message?: string
   citations?: Citation[]
+  answer?: string
+  answerable?: boolean
   degraded?: boolean
 }
 
@@ -171,6 +207,9 @@ export interface SearchResponse {
   hyde_text?: string | null
   timings?: Record<string, number>
   rerank?: { enabled?: boolean; applied?: boolean; model?: string; warning?: string | null; pool_size?: number; reranked?: number }
+  index_version?: string
+  embedding_model?: string
+  rerank_model?: string
 }
 
 export interface JobPage {
@@ -200,7 +239,7 @@ export interface KbSettings {
   rerank_enabled?: boolean
   graph_enabled?: boolean
   context_expand?: boolean
-  answer_detail?: 'brief' | 'normal' | 'detailed'
+  answer_detail?: 'concise' | 'standard' | 'detailed' | 'brief' | 'normal'
   show_citations?: boolean
   ignore_whitespace?: boolean
   only_changes?: boolean

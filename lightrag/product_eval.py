@@ -511,6 +511,7 @@ def evaluate(
     tracks: set[str] | None = None,
     enable_rerank: bool = False,
     rerank_rule: dict[str, Any] | None = None,
+    staged: bool = False,
 ) -> dict[str, Any]:
     import copy
 
@@ -552,11 +553,11 @@ def evaluate(
         for mode in MODES:
             if mode == "hybrid":
                 for key, ratio in (("0", 0.0), ("0.25", 0.25), ("0.5", 0.5), ("0.75", 0.75), ("1", 1.0)):
-                    measured = asyncio.run(_run_split(rag, chunks, holdout, mode, ratio=ratio, enable_rerank=enable_rerank))
+                    measured = asyncio.run(_run_split(rag, chunks, holdout, mode, ratio=ratio, enable_rerank=enable_rerank, staged=staged))
                     hybrid_ratios[key] = _metrics(measured)
                 by_mode[mode] = hybrid_ratios["0.5"]
             else:
-                measured = asyncio.run(_run_split(rag, chunks, holdout, mode, enable_rerank=enable_rerank))
+                measured = asyncio.run(_run_split(rag, chunks, holdout, mode, enable_rerank=enable_rerank, staged=staged))
                 by_mode[mode] = _metrics(measured)
         return {
             "profile": profile,
@@ -615,6 +616,7 @@ def _real_embed_one_factory():
         for start in range(0, len(missing), 16):
             batch = missing[start:start + 16]
             matrix = _fetch(batch)
+            embed_one.calls += len(batch)
             for text, row in zip(batch, matrix):
                 vector = np.asarray(row, dtype=np.float32)
                 cache[text] = vector / (float(np.linalg.norm(vector)) or 1.0)
@@ -625,6 +627,7 @@ def _real_embed_one_factory():
         return cache[text]
 
     embed_one.prefetch = embed_many
+    embed_one.calls = 0
     return embed_one, model
 
 
@@ -742,6 +745,7 @@ def evaluate_ablation(
     embed_one: Callable[[str], np.ndarray] | None = None,
     profile: str = "ci",
     questions: list[dict[str, Any]] | None = None,
+    use_real_rerank: bool = False,
 ) -> dict[str, Any]:
     """同一批问题的消融。重排关闭时不会访问重排服务。"""
     from lightrag.search_strategies import tokenize
@@ -765,8 +769,8 @@ def evaluate_ablation(
             scored = scored[:top_n]
         return scored
 
-    runtime_module.siliconflow_rerank = _local_rerank
-    rerank_module.siliconflow_rerank = _local_rerank
+    runtime_module.siliconflow_rerank = original_rerank if use_real_rerank else _local_rerank
+    rerank_module.siliconflow_rerank = original_rerank if use_real_rerank else _local_rerank
     try:
         embed_one = embed_one or _ci_embed_one
         rag, chunks = build_library(dataset, embed_one)
@@ -800,6 +804,26 @@ def evaluate_ablation(
             os.environ["RETRIEVAL_PROFILE"] = previous
 
 
+def _quality_gate(report: dict[str, Any]) -> list[str]:
+    failures = []
+    off = report["rerank_off"]["holdout"]
+    on = report["rerank_on"]["holdout"]
+    for mode, metrics in {**off, **on}.items():
+        if int(metrics.get("cross_kb_leaks") or 0) != 0:
+            failures.append(f"{mode} 出现跨知识库泄漏")
+    mix_off = float(off["mix"].get("recall_at_5") or 0)
+    mix_on = float(on["mix"].get("recall_at_5") or 0)
+    if mix_on + 0.01 < mix_off:
+        failures.append("mix 开启重排后 Recall@5 下降超过 1 个百分点")
+    if float(on["mix"].get("false_return_rate") or 0) > float(off["mix"].get("false_return_rate") or 0):
+        failures.append("无答案错误返回率增加")
+    graph_off = off["graph"].get("multihop_hit_rate")
+    graph_on = on["graph"].get("multihop_hit_rate")
+    if graph_off is not None and graph_on is not None and float(graph_on) + 1e-9 < float(graph_off):
+        failures.append("graph 多跳问题子集退化")
+    return failures
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="个人知识库检索评测")
     parser.add_argument("--dataset", required=True)
@@ -826,7 +850,7 @@ def main() -> None:
             rerank_rule = fit_rerank_rule(dataset, calibration)
         except Exception as exc:
             raise RuntimeError("重排标定失败：" + _safe_error(exc)) from exc
-        report = evaluate(dataset, embed_one=embed_one, profile=profile, fit_calibration=True, rerank_rule=rerank_rule)
+        report = evaluate(dataset, embed_one=embed_one, profile=profile, fit_calibration=True, rerank_rule=rerank_rule, staged=True)
         report_on = evaluate(
             dataset,
             embed_one=embed_one,
@@ -834,6 +858,7 @@ def main() -> None:
             fit_calibration=True,
             enable_rerank=True,
             rerank_rule=rerank_rule,
+            staged=True,
         )
         report["embedding_model"] = model
         report["rerank_model"] = os.getenv("RERANK_MODEL", "")
@@ -846,6 +871,14 @@ def main() -> None:
             "holdout": report_on["holdout"],
             "hybrid_ratios": report_on["hybrid_ratios"],
         }
+        report["ablation"] = evaluate_ablation(dataset, embed_one=embed_one, profile=profile, use_real_rerank=True)
+        report["call_counts"] = {
+            "embedding": int(getattr(embed_one, "calls", 0) or 0),
+            "rerank": int(report["holdout"].get("mix", {}).get("rerank_calls") or 0) + int(report_on["holdout"].get("mix", {}).get("rerank_calls") or 0),
+            "llm_rewrite": int(report["holdout"].get("mix", {}).get("query_rewrite_calls") or 0) + int(report_on["holdout"].get("mix", {}).get("query_rewrite_calls") or 0),
+        }
+        gate_failures = _quality_gate(report)
+        report["quality_gate"] = {"passed": not gate_failures, "failures": gate_failures}
         report["recommended_admission"]["rerank"] = rerank_rule
     else:
         report = evaluate(dataset, profile="ci", fit_calibration=True)

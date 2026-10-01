@@ -75,6 +75,8 @@ class SourceUnit:
     sheet_name: str = ""
     cell_range: str = ""
     bbox: list[float] | None = None
+    line_start: int | None = None
+    line_end: int | None = None
     children: list["SourceUnit"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -90,6 +92,8 @@ class SourceUnit:
         self.sheet_name = _text(self.sheet_name)
         self.cell_range = _text(self.cell_range)
         self.bbox = _bbox(self.bbox)
+        self.line_start = _optional_int(self.line_start)
+        self.line_end = _optional_int(self.line_end)
 
     def walk(self) -> list["SourceUnit"]:
         found = [self]
@@ -108,6 +112,8 @@ class SourceUnit:
             "cell_range": self.cell_range,
             "content": self.content,
             "bbox": self.bbox,
+            "line_start": self.line_start,
+            "line_end": self.line_end,
             "children": [child.to_dict() for child in self.children],
         }
 
@@ -124,6 +130,8 @@ class SourceUnit:
             sheet_name=raw.get("sheet_name") or "",
             cell_range=raw.get("cell_range") or "",
             bbox=raw.get("bbox"),
+            line_start=raw.get("line_start"),
+            line_end=raw.get("line_end"),
             children=children,
         )
 
@@ -315,6 +323,8 @@ def public_location(source: dict[str, Any] | None) -> dict[str, Any]:
         "sheet_name": _text(raw.get("sheet_name")),
         "cell_range": _text(raw.get("cell_range")),
         "bbox": raw.get("bbox") if isinstance(raw.get("bbox"), list) else None,
+        "line_start": None if raw.get("line_start") in (None, "") else _optional_int(raw.get("line_start")),
+        "line_end": None if raw.get("line_end") in (None, "") else _optional_int(raw.get("line_end")),
         "excerpt": str(raw.get("excerpt") or ""),
     }
 
