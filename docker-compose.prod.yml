@@ -1,0 +1,16 @@
+# 生产编排。先在 .env 设置 TOKEN_SECRET、PRODUCT_AUTH=1、CORS_ORIGINS 和 COOKIE_SECURE。
+# APP_ENV=production 且登录关闭、TOKEN_SECRET 仍是默认值、或 CORS 为 * 时，进程拒绝启动。
+# 启动：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate
+# 修改 .env 后必须再次 --force-recreate。docker restart 不会重新读取环境变量。
+services:
+  lightrag:
+    environment:
+      APP_ENV: production
+      PRODUCT_AUTH: "1"
+      # 由部署环境注入，不要把密码写进仓库。必须是 postgresql://
+      DATABASE_URL: ${DATABASE_URL:-}
+  lightrag-worker:
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-}

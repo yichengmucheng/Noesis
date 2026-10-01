@@ -1,0 +1,48 @@
+# 开发编排。PRODUCT_AUTH 留空时控制台可以匿名使用。
+# 修改 .env 后必须重建容器，docker restart 不会重新读取 env_file：
+#   docker compose up -d --force-recreate
+# 不要用 docker compose up --build 覆盖已经 docker cp 进容器的代码，除非同时重新构建镜像。
+services:
+  lightrag:
+    build: .
+    image: lightrag-kb:local
+    container_name: lightrag-kb
+    ports:
+      - "9621:9621"
+    env_file:
+      - .env
+    environment:
+      WORKING_DIR: /app/data/rag_storage
+      INPUT_DIR: /app/data/inputs
+      HOST: 0.0.0.0
+      PORT: "9621"
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+      KG_SCHEMA: open
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/originals:/app/data/inputs
+      - ./product_webui/dist:/app/product_webui/dist
+      - ./.env:/app/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+  lightrag-worker:
+    image: lightrag-kb:local
+    container_name: lightrag-kb-worker
+    env_file:
+      - .env
+    environment:
+      WORKING_DIR: /app/data/rag_storage
+      INPUT_DIR: /app/data/inputs
+      WORKER_COUNT: "1"
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/originals:/app/data/inputs
+      - ./.env:/app/.env
+    entrypoint: ["python", "-m", "lightrag.product_worker"]
+    restart: unless-stopped
+    depends_on:
+      - lightrag
