@@ -1,0 +1,1992 @@
+{
+  "documents": [
+    {
+      "id": "doc-edu",
+      "name": "resume.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "林知夏2018至2022年就读津门财经大学信息管理专业，导师是周衡。"
+        }
+      ]
+    },
+    {
+      "id": "doc-cook",
+      "name": "pork.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "家常红烧肉先焯水，再放酱油和冰糖炖四十分钟。"
+        }
+      ]
+    },
+    {
+      "id": "doc-spare",
+      "name": "ribs.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "糖醋排骨先炸至外酥，再淋糖醋汁翻炒。"
+        }
+      ]
+    },
+    {
+      "id": "doc-trip",
+      "name": "hangzhou.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "西湖在杭州，春季可沿苏堤骑行，游船从断桥出发。"
+        }
+      ]
+    },
+    {
+      "id": "doc-filter",
+      "name": "filter.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "净水器滤芯型号JW-220，每九十天更换一次。"
+        }
+      ]
+    },
+    {
+      "id": "doc-clinic",
+      "name": "clinic.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "病历写明对青霉素过敏，就诊号MZ-3301。"
+        }
+      ]
+    },
+    {
+      "id": "doc-pet",
+      "name": "pet.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "狗狗豆豆于2024年11月2日接种狂犬疫苗，芯片号P8891。"
+        }
+      ]
+    },
+    {
+      "id": "doc-invoice",
+      "name": "invoice.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "发票号码INV-88421，税额一百二十元，销方北窗书店。"
+        }
+      ]
+    },
+    {
+      "id": "doc-budget",
+      "name": "budget.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "三月家庭预算里通勤支出列为四百元，科目代码YS-0312。"
+        }
+      ]
+    },
+    {
+      "id": "doc-plant",
+      "name": "plant.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "阳台绿萝每星期三浇水一次，花盆放在朝南窗台。"
+        }
+      ]
+    },
+    {
+      "id": "doc-school",
+      "name": "school.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "档案记载求职者在津门财经院校完成本科信息管理学业，入学年份为二零一八。"
+        }
+      ]
+    },
+    {
+      "id": "doc-meet",
+      "name": "meeting.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "极光项目安排评审会。"
+        },
+        {
+          "unit_id": "t0002",
+          "text": "评审会位于三号会议室，时间是三月十二日下午三点。"
+        }
+      ]
+    },
+    {
+      "id": "doc-river",
+      "name": "river.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "长江发源于唐古拉山，全长约六千三百公里。"
+        }
+      ]
+    },
+    {
+      "id": "doc-bridge",
+      "name": "bridge.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "长江大桥位于南京，桥面可以通汽车。"
+        }
+      ]
+    },
+    {
+      "id": "doc-bill-a",
+      "name": "bill-a.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "账单ZD-77821金额为三百元，收款方是晨光文具。"
+        }
+      ]
+    },
+    {
+      "id": "doc-bill-b",
+      "name": "bill-b.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "账单ZD-77822金额为三百五十元，收款方是晨光文具。"
+        }
+      ]
+    },
+    {
+      "id": "doc-intern",
+      "name": "intern.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "林知夏2023年在港湾物流公司实习六个月，岗位是仓储数据核对。"
+        }
+      ]
+    },
+    {
+      "id": "doc-fish",
+      "name": "fish.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "清蒸鲈鱼需要姜丝和料酒，蒸八分钟后淋热油。"
+        }
+      ]
+    },
+    {
+      "id": "doc-chengdu",
+      "name": "chengdu.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "十月去成都大熊猫基地，早上八点半入园，门票凭身份证换票。"
+        }
+      ]
+    },
+    {
+      "id": "doc-print",
+      "name": "print.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "采购合同编号HT-2025-1107，乙方青柠印刷，价款一万二千。"
+        }
+      ]
+    },
+    {
+      "id": "doc-ht18",
+      "name": "ht18.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "服务合同编号HT-2024-0918，甲方海盐工作室，价款八千元。"
+        }
+      ]
+    },
+    {
+      "id": "doc-ht19",
+      "name": "ht19.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "补充协议编号HT-2024-0919，甲方海盐工作室，价款九千元。"
+        }
+      ]
+    },
+    {
+      "id": "doc-air",
+      "name": "air.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "空气净化器型号AP-9，滤网每半年清洗，指示灯变红时更换。"
+        }
+      ]
+    },
+    {
+      "id": "doc-cycle",
+      "name": "cycle.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "水循环包括蒸发、凝结和降水三个环节，课本页码是第48页。"
+        }
+      ]
+    },
+    {
+      "id": "doc-guitar",
+      "name": "guitar.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "吉他练习记录写着每周三晚上练习扫弦二十分钟。"
+        }
+      ]
+    },
+    {
+      "id": "doc-policy",
+      "name": "policy.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "意外险保单POL-55290，受益人写的是林知夏，保额三十万。"
+        }
+      ]
+    },
+    {
+      "id": "doc-syrup",
+      "name": "syrup.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "糕点上色使用葡萄糖浆，烘焙温度一百八十度。"
+        }
+      ]
+    },
+    {
+      "id": "doc-bio",
+      "name": "bio.txt",
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "光合作用产生葡萄糖。"
+        },
+        {
+          "unit_id": "t0002",
+          "text": "葡萄糖为细胞呼吸提供能量。"
+        }
+      ]
+    },
+    {
+      "id": "doc-sweet",
+      "name": "sweet.txt",
+      "kb_id": "kb-other",
+      "owner_id": "user-b",
+      "chunks": [
+        {
+          "unit_id": "t0001",
+          "text": "葡萄糖导致甜味增加。"
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "src": "极光项目",
+      "relation": "安排",
+      "tgt": "评审会",
+      "document_id": "doc-meet",
+      "unit_id": "t0001",
+      "kb_id": "kb-main",
+      "owner_id": "user-a"
+    },
+    {
+      "src": "评审会",
+      "relation": "位于",
+      "tgt": "三号会议室",
+      "document_id": "doc-meet",
+      "unit_id": "t0002",
+      "kb_id": "kb-main",
+      "owner_id": "user-a"
+    },
+    {
+      "src": "光合作用",
+      "relation": "产生",
+      "tgt": "葡萄糖",
+      "document_id": "doc-bio",
+      "unit_id": "t0001",
+      "kb_id": "kb-main",
+      "owner_id": "user-a"
+    },
+    {
+      "src": "葡萄糖",
+      "relation": "提供",
+      "tgt": "能量",
+      "document_id": "doc-bio",
+      "unit_id": "t0002",
+      "kb_id": "kb-main",
+      "owner_id": "user-a"
+    },
+    {
+      "src": "葡萄糖",
+      "relation": "导致",
+      "tgt": "甜味",
+      "document_id": "doc-sweet",
+      "unit_id": "t0001",
+      "kb_id": "kb-other",
+      "owner_id": "user-b"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q001",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "林知夏的导师是谁",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-edu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q002",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "林知夏2018至2022年就读津门财经大学",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-edu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q003",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "家常红烧肉先焯水再放酱油和冰糖",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cook"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q004",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "家常红烧肉要炖四十分钟",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cook"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q005",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "西湖在杭州春季可沿苏堤骑行",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-trip"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q006",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "西湖游船从断桥出发",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-trip"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q007",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "净水器滤芯型号JW-220每九十天更换",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-filter"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q008",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "病历写明对青霉素过敏，就诊号MZ-3301",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-clinic"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q009",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "狗狗豆豆于2024年11月2日接种狂犬疫苗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-pet"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q010",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "芯片号P8891对应哪只狗狗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-pet"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q011",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "发票号码INV-88421的税额是多少",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-invoice"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q012",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "发票INV-88421的销方是北窗书店",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-invoice"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q013",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "三月家庭预算里通勤支出列为四百元",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-budget"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q014",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "科目代码YS-0312是哪一项支出",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-budget"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q015",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "阳台绿萝每星期三浇水一次",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-plant"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q016",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "绿萝花盆放在朝南窗台",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-plant"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q017",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "林知夏2023年在港湾物流公司实习多久",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-intern"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q018",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "港湾物流公司的实习岗位是仓储数据核对",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-intern"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q019",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "清蒸鲈鱼需要姜丝和料酒",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-fish"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q020",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "清蒸鲈鱼蒸八分钟后淋热油",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-fish"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q021",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "十月去成都大熊猫基地早上几点入园",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-chengdu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q022",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "成都大熊猫基地门票凭身份证换票",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-chengdu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q023",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "采购合同编号HT-2025-1107的乙方是谁",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-print"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q024",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "青柠印刷这份采购合同价款一万二千",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-print"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q025",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "空气净化器型号AP-9的滤网多久清洗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-air"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q026",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "AP-9指示灯变红时更换滤网",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-air"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q027",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "水循环包括蒸发、凝结和降水",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cycle"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q028",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "水循环课本页码是第48页",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cycle"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q029",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "吉他练习记录写着每周三晚上练习扫弦",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-guitar"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q030",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "扫弦练习每次二十分钟",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-guitar"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q031",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "意外险保单POL-55290的受益人是谁",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-policy"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q032",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "保单POL-55290的保额是三十万",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-policy"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q033",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "周衡指导林知夏的信息管理专业",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-edu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q034",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "冰糖和酱油一起用于家常红烧肉",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cook"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q035",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "苏堤是西湖春季骑行的路线",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-trip"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q036",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "JW-220是净水器滤芯型号",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-filter"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q037",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "MZ-3301这次就诊记录了青霉素过敏",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-clinic"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q038",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "P8891是豆豆的芯片号",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-pet"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q039",
+      "split": "calibration",
+      "track": "lexical",
+      "query": "北窗书店开出号码INV-88421",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-invoice"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q040",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "仓储数据核对是港湾物流的实习岗位",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-intern"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q041",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "料酒和姜丝用于清蒸鲈鱼",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-fish"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q042",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "八点半进入成都大熊猫基地",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-chengdu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q043",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "合同HT-2025-1107价款一万二千",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-print"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q044",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "型号AP-9的滤网每半年清洗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-air"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q045",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "凝结属于水循环的环节",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cycle"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q046",
+      "split": "holdout",
+      "track": "lexical",
+      "query": "每周三晚上的扫弦练习二十分钟",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-guitar"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q047",
+      "split": "calibration",
+      "track": "semantic",
+      "query": "这位候选人的大学是哪一所？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-school"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q048",
+      "split": "calibration",
+      "track": "semantic",
+      "query": "这位候选人读完高等学历的地方叫什么？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-school"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q049",
+      "split": "holdout",
+      "track": "semantic",
+      "query": "这道鱼肴要蒸多久？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-fish"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q050",
+      "split": "holdout",
+      "track": "semantic",
+      "query": "起锅之后浇上去的滚烫油脂叫什么？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-fish"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q051",
+      "split": "calibration",
+      "track": "semantic",
+      "query": "窗边那盆观叶植物隔几天补水？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-plant"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q052",
+      "split": "holdout",
+      "track": "semantic",
+      "query": "这份人身保障合同赔多少？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-policy"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q053",
+      "split": "calibration",
+      "track": "semantic",
+      "query": "上下班那一项每个月列了多少钱？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-budget"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q054",
+      "split": "holdout",
+      "track": "semantic",
+      "query": "当天要用什么证件兑换通行证？",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-chengdu"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q055",
+      "split": "calibration",
+      "track": "hard_negative",
+      "query": "家常红烧肉先焯水还是先炸",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-cook"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q056",
+      "split": "calibration",
+      "track": "hard_negative",
+      "query": "糖醋排骨淋的是什么汁",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-spare"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q057",
+      "split": "holdout",
+      "track": "hard_negative",
+      "query": "服务合同编号HT-2024-0918价款八千元吗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-ht18"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q058",
+      "split": "holdout",
+      "track": "hard_negative",
+      "query": "补充协议编号HT-2024-0919价款是多少",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-ht19"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q059",
+      "split": "calibration",
+      "track": "near_id",
+      "query": "账单ZD-77821金额是多少",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-bill-a"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q060",
+      "split": "calibration",
+      "track": "near_id",
+      "query": "账单ZD-77822的收款方金额是多少",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-bill-b"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q061",
+      "split": "holdout",
+      "track": "near_id",
+      "query": "编号HT-2024-0918的价款",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-ht18"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q062",
+      "split": "holdout",
+      "track": "near_id",
+      "query": "编号HT-2024-0919的价款",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-ht19"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q063",
+      "split": "calibration",
+      "track": "same_name",
+      "query": "长江发源于哪里",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-river"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q064",
+      "split": "calibration",
+      "track": "same_name",
+      "query": "长江大桥位于哪座城市",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-bridge"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q065",
+      "split": "holdout",
+      "track": "same_name",
+      "query": "细胞呼吸的能量由光合作用产生的糖提供吗",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-bio"
+      ],
+      "expected_units": [
+        "t0001",
+        "t0002"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q066",
+      "split": "holdout",
+      "track": "same_name",
+      "query": "糕点上色使用葡萄糖浆时烘焙温度是多少",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-syrup"
+      ],
+      "expected_units": [
+        "t0001"
+      ],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q067",
+      "split": "calibration",
+      "track": "multihop",
+      "query": "极光项目安排的评审会位于哪里",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-meet"
+      ],
+      "expected_units": [
+        "t0001",
+        "t0002"
+      ],
+      "multihop": true,
+      "path_names": [
+        "极光项目",
+        "评审会",
+        "三号会议室"
+      ]
+    },
+    {
+      "id": "q068",
+      "split": "holdout",
+      "track": "multihop",
+      "query": "光合作用如何为细胞提供能量",
+      "answerable": true,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [
+        "doc-bio"
+      ],
+      "expected_units": [
+        "t0001",
+        "t0002"
+      ],
+      "multihop": true,
+      "path_names": [
+        "光合作用",
+        "葡萄糖",
+        "能量"
+      ]
+    },
+    {
+      "id": "q069",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "轨道电梯缆绳的屈服强度是多少",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q070",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "火星移民舱的备件清单在哪一页",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q071",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "深海潜标的电池仓怎么拆",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q072",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "冰川钻孔岩芯的取样深度",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q073",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "超导计算封装厂的门牌",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q074",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "候鸟环志脚环的回收邮箱",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q075",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "古琴减字谱里勾剔的指法图",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q076",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "橡木发酵桶收在哪一窖",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q077",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "滑雪镜防雾涂层的保修期",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q078",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "蜂箱隔王板的安装间隙",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q079",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "邮票齿孔度数怎么测量",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q080",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "风洞试验段的风速上限",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q081",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "陶轮转速刻度怎么校准",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q082",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "灯塔透镜的焦距登记表",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q083",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "马术障碍杯的赛道图",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q084",
+      "split": "calibration",
+      "track": "unanswerable",
+      "query": "珊瑚移植框的绑扎材料",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q085",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "热气球燃烧器的年检章",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q086",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "竹笛膜孔应该贴多厚",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q087",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "天文台圆顶的开合密码",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q088",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "雪线以上用什么容器采冰",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q089",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "帆船帆号喷涂模板在哪",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q090",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "地铁盾构机刀盘的扭矩",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q091",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "蜡染冰纹的防染配方",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q092",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "鸽子脚环的归属俱乐部",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q093",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "火山灰样本的保管柜号",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q094",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "钢琴调律师的上门档期",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q095",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "沙漠公路里程桩的缺失段",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q096",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "刺绣绷架的标准宽度",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q097",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "观星营地何时必须关灯",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q098",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "冷库月台的限高标志",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q099",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "陶土釉料的批号对照",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    },
+    {
+      "id": "q100",
+      "split": "holdout",
+      "track": "unanswerable",
+      "query": "信鸽公棚的归巢名次",
+      "answerable": false,
+      "kb_id": "kb-main",
+      "owner_id": "user-a",
+      "expected_docs": [],
+      "expected_units": [],
+      "multihop": false,
+      "path_names": []
+    }
+  ]
+}
