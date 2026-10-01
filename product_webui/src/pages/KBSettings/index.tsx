@@ -28,7 +28,7 @@ export default function KBSettingsPage() {
         rerank_enabled: value.rerank_enabled ?? false,
         graph_enabled: value.graph_enabled ?? true,
         context_expand: value.context_expand ?? false,
-        answer_detail: value.answer_detail ?? 'normal',
+        answer_detail: value.answer_detail === 'brief' ? 'concise' : value.answer_detail === 'normal' || !value.answer_detail ? 'standard' : value.answer_detail,
         show_citations: value.show_citations !== false,
         ignore_whitespace: value.ignore_whitespace ?? true,
         only_changes: value.only_changes ?? true,
@@ -72,8 +72,8 @@ export default function KBSettingsPage() {
                 </Form.Item>
                 <Form.Item name="answer_detail" label="回答详细程度">
                   <Radio.Group>
-                    <Radio.Button value="brief">简要</Radio.Button>
-                    <Radio.Button value="normal">标准</Radio.Button>
+                    <Radio.Button value="concise">简洁</Radio.Button>
+                    <Radio.Button value="standard">标准</Radio.Button>
                     <Radio.Button value="detailed">详细</Radio.Button>
                   </Radio.Group>
                 </Form.Item>

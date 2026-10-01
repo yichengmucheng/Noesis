@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type {
-  DeepCheckReport, DeviceSession, IndexStatus, JobPage, KbSettings,
+  DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings,
   KnowledgeBase, ProductCapabilities, ProductJob, PurgeJob, SearchResponse,
 } from '../types'
 
@@ -172,6 +172,9 @@ export const docApi = {
 
   delete: (docId: string, kbId: string) =>
     http.delete<any, any>(`/documents/${docId}`, { params: { kb_id: kbId } }),
+
+  source: (docId: string, params: { kb_id: string; version_id?: string; chunk_id?: string; unit_id?: string }) =>
+    http.get<any, DocumentSource>(`/documents/${docId}/source`, { params }),
 
   cancel: (kbId: string, name: string, docId = '') =>
     http.post<any, any>('/documents/cancel', null, { params: { kb_id: kbId, name, doc_id: docId } }),
