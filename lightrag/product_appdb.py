@@ -19,7 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 
-SCHEMA_VERSION = "app-004"
+SCHEMA_VERSION = "app-005"
 APP_DB_NAME = "product_app.sqlite"
 
 _STORES: dict[str, "AppStore"] = {}
@@ -141,6 +141,41 @@ _MIGRATIONS = (
         ALTER TABLE memories ADD COLUMN embedding_model TEXT NOT NULL DEFAULT '';
         CREATE INDEX IF NOT EXISTS idx_memories_scope
             ON memories(owner_id, scope, kb_id, enabled, source_status, expires_at, updated_at);
+        """,
+    ),
+    (
+        "app-005",
+        """
+        CREATE TABLE IF NOT EXISTS voice_practice_sessions (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            goal TEXT NOT NULL DEFAULT 'free',
+            status TEXT NOT NULL DEFAULT 'active',
+            conversation_id TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_voice_sessions_scope
+            ON voice_practice_sessions(owner_id, kb_id, status, updated_at);
+        CREATE TABLE IF NOT EXISTS voice_practice_turns (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            transcript TEXT NOT NULL DEFAULT '',
+            answer TEXT NOT NULL DEFAULT '',
+            citations_json TEXT NOT NULL DEFAULT '[]',
+            memory_refs_json TEXT NOT NULL DEFAULT '[]',
+            audio_status TEXT NOT NULL DEFAULT 'not_requested',
+            status TEXT NOT NULL DEFAULT 'completed',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_voice_turns_scope
+            ON voice_practice_turns(owner_id, kb_id, session_id, created_at);
         """,
     ),
 )
@@ -925,6 +960,8 @@ class AppStore:
                 self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
                 self._conn.execute("DELETE FROM messages WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
                 self._conn.execute("DELETE FROM conversations WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
+                self._conn.execute("DELETE FROM voice_practice_turns WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
+                self._conn.execute("DELETE FROM voice_practice_sessions WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
                 self._conn.execute(
                     "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND owner_id = ? AND scope = 'kb'",
                     (_now(), kb_id, owner_id),
@@ -935,11 +972,161 @@ class AppStore:
                 self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM messages WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM conversations WHERE kb_id = ?", (kb_id,))
+                self._conn.execute("DELETE FROM voice_practice_turns WHERE kb_id = ?", (kb_id,))
+                self._conn.execute("DELETE FROM voice_practice_sessions WHERE kb_id = ?", (kb_id,))
                 self._conn.execute(
                     "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND scope = 'kb'",
                     (_now(), kb_id),
                 )
             _commit_with_retry(self._conn)
+
+    def create_voice_practice_session(
+        self,
+        owner_id: str,
+        kb_id: str,
+        *,
+        goal: str = "free",
+        conversation_id: str = "",
+    ) -> dict[str, Any]:
+        now = _now()
+        row = {
+            "id": uuid4().hex,
+            "owner_id": owner_id,
+            "kb_id": kb_id,
+            "goal": goal if goal in {"free", "recall", "interview", "review"} else "free",
+            "status": "active",
+            "conversation_id": conversation_id or "",
+            "summary": "",
+            "created_at": now,
+            "updated_at": now,
+            "ended_at": "",
+        }
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO voice_practice_sessions(
+                    id, owner_id, kb_id, goal, status, conversation_id, summary,
+                    created_at, updated_at, ended_at
+                ) VALUES (:id, :owner_id, :kb_id, :goal, :status, :conversation_id,
+                          :summary, :created_at, :updated_at, :ended_at)
+                """,
+                row,
+            )
+            _commit_with_retry(self._conn)
+        return self._public_voice_session(row)
+
+    def get_voice_practice_session(self, session_id: str, owner_id: str, kb_id: str | None = None) -> dict[str, Any] | None:
+        sql = "SELECT * FROM voice_practice_sessions WHERE id = ? AND owner_id = ?"
+        params: list[Any] = [session_id, owner_id]
+        if kb_id is not None:
+            sql += " AND kb_id = ?"
+            params.append(kb_id)
+        row = self._one(sql, tuple(params))
+        return self._public_voice_session(row) if row else None
+
+    def list_voice_practice_sessions(self, owner_id: str, kb_id: str, limit: int = 30) -> list[dict[str, Any]]:
+        rows = self._all(
+            """SELECT * FROM voice_practice_sessions
+               WHERE owner_id = ? AND kb_id = ?
+               ORDER BY updated_at DESC LIMIT ?""",
+            (owner_id, kb_id, max(1, min(int(limit or 30), 100))),
+        )
+        return [self._public_voice_session(row) for row in rows]
+
+    def update_voice_practice_session(
+        self,
+        session_id: str,
+        owner_id: str,
+        kb_id: str,
+        *,
+        status: str | None = None,
+        summary: str | None = None,
+        conversation_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        current = self.get_voice_practice_session(session_id, owner_id, kb_id)
+        if current is None:
+            return None
+        next_status = status if status in {"active", "completed", "cancelled", "failed"} else current["status"]
+        next_summary = current["summary"] if summary is None else str(summary or "")[:2000]
+        next_conversation = current["conversation_id"] if conversation_id is None else str(conversation_id or "")
+        ended_at = current.get("ended_at") or ""
+        if next_status in {"completed", "cancelled", "failed"} and not ended_at:
+            ended_at = _now()
+        with self._lock:
+            self._conn.execute(
+                """UPDATE voice_practice_sessions
+                   SET status = ?, summary = ?, conversation_id = ?, updated_at = ?, ended_at = ?
+                   WHERE id = ? AND owner_id = ? AND kb_id = ?""",
+                (next_status, next_summary, next_conversation, _now(), ended_at, session_id, owner_id, kb_id),
+            )
+            _commit_with_retry(self._conn)
+        return self.get_voice_practice_session(session_id, owner_id, kb_id)
+
+    def add_voice_practice_turn(
+        self,
+        *,
+        session_id: str,
+        owner_id: str,
+        kb_id: str,
+        transcript: str,
+        answer: str = "",
+        citations: list[dict[str, Any]] | None = None,
+        memory_refs: list[dict[str, Any]] | None = None,
+        audio_status: str = "not_requested",
+        status: str = "completed",
+    ) -> dict[str, Any]:
+        now = _now()
+        row = {
+            "id": uuid4().hex,
+            "session_id": session_id,
+            "owner_id": owner_id,
+            "kb_id": kb_id,
+            "role": "turn",
+            "transcript": str(transcript or "")[:8000],
+            "answer": str(answer or "")[:16000],
+            "citations_json": json.dumps(citations or [], ensure_ascii=False),
+            "memory_refs_json": json.dumps(memory_refs or [], ensure_ascii=False),
+            "audio_status": audio_status or "not_requested",
+            "status": status or "completed",
+            "created_at": now,
+        }
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO voice_practice_turns(
+                    id, session_id, owner_id, kb_id, role, transcript, answer,
+                    citations_json, memory_refs_json, audio_status, status, created_at
+                ) VALUES (:id, :session_id, :owner_id, :kb_id, :role, :transcript, :answer,
+                          :citations_json, :memory_refs_json, :audio_status, :status, :created_at)""",
+                row,
+            )
+            _commit_with_retry(self._conn)
+        return self._public_voice_turn(row)
+
+    def list_voice_practice_turns(self, session_id: str, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
+        rows = self._all(
+            """SELECT * FROM voice_practice_turns
+               WHERE session_id = ? AND owner_id = ? AND kb_id = ?
+               ORDER BY created_at ASC""",
+            (session_id, owner_id, kb_id),
+        )
+        return [self._public_voice_turn(row) for row in rows]
+
+    def get_voice_practice_turn(self, turn_id: str, owner_id: str) -> dict[str, Any] | None:
+        row = self._one(
+            "SELECT * FROM voice_practice_turns WHERE id = ? AND owner_id = ?",
+            (turn_id, owner_id),
+        )
+        return self._public_voice_turn(row) if row else None
+
+    def update_voice_practice_turn_audio(self, turn_id: str, owner_id: str, audio_status: str) -> dict[str, Any] | None:
+        status = audio_status if audio_status in {"not_requested", "generating", "ready", "failed"} else "failed"
+        with self._lock:
+            self._conn.execute(
+                "UPDATE voice_practice_turns SET audio_status = ? WHERE id = ? AND owner_id = ?",
+                (status, turn_id, owner_id),
+            )
+            _commit_with_retry(self._conn)
+        return self.get_voice_practice_turn(turn_id, owner_id)
 
     def _one(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
         with self._lock:
@@ -1058,4 +1245,44 @@ class AppStore:
             "embedding_model": data.get("embedding_model") or "",
             "created_at": data["created_at"],
             "updated_at": data["updated_at"],
+        }
+
+    def _public_voice_session(self, row: Any) -> dict[str, Any]:
+        data = dict(row)
+        return {
+            "id": data["id"],
+            "owner_id": data["owner_id"],
+            "kb_id": data["kb_id"],
+            "goal": data.get("goal") or "free",
+            "status": data.get("status") or "active",
+            "conversation_id": data.get("conversation_id") or "",
+            "summary": data.get("summary") or "",
+            "created_at": data.get("created_at") or "",
+            "updated_at": data.get("updated_at") or "",
+            "ended_at": data.get("ended_at") or "",
+        }
+
+    def _public_voice_turn(self, row: Any) -> dict[str, Any]:
+        data = dict(row)
+        try:
+            citations = json.loads(data.get("citations_json") or "[]")
+        except json.JSONDecodeError:
+            citations = []
+        try:
+            memory_refs = json.loads(data.get("memory_refs_json") or "[]")
+        except json.JSONDecodeError:
+            memory_refs = []
+        return {
+            "id": data["id"],
+            "session_id": data["session_id"],
+            "owner_id": data["owner_id"],
+            "kb_id": data["kb_id"],
+            "role": data.get("role") or "turn",
+            "transcript": data.get("transcript") or "",
+            "answer": data.get("answer") or "",
+            "citations": citations if isinstance(citations, list) else [],
+            "memory_refs": memory_refs if isinstance(memory_refs, list) else [],
+            "audio_status": data.get("audio_status") or "not_requested",
+            "status": data.get("status") or "completed",
+            "created_at": data.get("created_at") or "",
         }

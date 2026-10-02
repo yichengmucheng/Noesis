@@ -75,9 +75,9 @@ def test_conversation_crud_isolation_and_kb_purge(tmp_path, monkeypatch):
     assert searched[0]["id"] == conv_id
 
     store = open_appdb(working)
-    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004"]
+    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004", "app-005"]
     store.migrate()
-    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004"]
+    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004", "app-005"]
 
     doc_before = {"doc-keep": {"kb_id": kb_id, "display_name": "note.txt"}}
 

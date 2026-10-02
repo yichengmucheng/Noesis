@@ -3,6 +3,7 @@ import type {
   DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings, SourceContent,
   KnowledgeBase, ProductCapabilities, ProductJob, PurgeJob, SearchResponse,
   ConversationItem, StoredMessage, MemoryCandidate, MemoryItem,
+  VoicePracticeSession, VoicePracticeTurn,
 } from '../types'
 
 localStorage.removeItem('kb-refresh')
@@ -323,4 +324,21 @@ export const memoryApi = {
   patch: (id: string, data: { content?: string; category?: string; enabled?: boolean; scope?: string; kb_id?: string; expires_at?: string }) =>
     http.patch<any, MemoryItem>(`/memories/${id}`, data),
   remove: (id: string) => http.delete<any, { ok: boolean }>(`/memories/${id}`),
+}
+
+export const voiceApi = {
+  createSession: (data: { kb_id: string; goal: string }) =>
+    http.post<any, VoicePracticeSession>('/voice/practice/sessions', data),
+  listSessions: (kbId: string) =>
+    http.get<any, { items: VoicePracticeSession[] }>('/voice/practice/sessions', { params: { kb_id: kbId } }),
+  getSession: (sessionId: string, kbId: string) =>
+    http.get<any, VoicePracticeSession>(`/voice/practice/sessions/${sessionId}`, { params: { kb_id: kbId } }),
+  transcribe: (formData: FormData) =>
+    http.post<any, { text: string }>('/voice/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  turn: (sessionId: string, data: { kb_id: string; transcript: string }) =>
+    http.post<any, VoicePracticeTurn & { answer?: string; memories?: VoicePracticeTurn['memory_refs'] }>(`/voice/practice/${sessionId}/turn`, data),
+  speech: (turnId: string, kbId: string) =>
+    http.post<any, Blob>('/voice/speech', { turn_id: turnId, kb_id: kbId }, { responseType: 'blob' }),
+  finish: (sessionId: string, data: { kb_id: string; summary?: string }) =>
+    http.post<any, VoicePracticeSession>(`/voice/practice/${sessionId}/finish`, data),
 }

@@ -168,7 +168,23 @@ python -m lightrag.product_appdb_backup --working-dir data/rag_storage `
 SQLite + 一个 API 进程及一个 Worker 进程；多 API 进程部署前应迁移到 PostgreSQL，
 本阶段不自动引入 PostgreSQL。
 
-## 8. 测试
+## 8. 半双工语音练习（Phase C1）
+
+语音练习是浏览器录音 → ASR 转写 → 复用可信问答 → TTS 播放的半双工流程。语音不会绕过
+知识库检索、文档引用或个人记忆作用域。练习会话和回合保存在 `product_app.sqlite`，随知识库
+删除一起清理，并随应用库备份恢复。
+
+需要外部 OpenAI-compatible 服务时，在部署环境设置 `ASR_API_BASE`、`ASR_API_KEY`、
+`ASR_MODEL` 与 `TTS_API_BASE`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_VOICE`。未配置时，界面会
+明确提示服务尚未配置，不会生成占位文本或空音频。第一版不做全双工抢话、声纹、发音评分、
+情绪识别、视频或音频资料入库。
+
+API：`POST /api/v1/voice/practice/sessions`、`POST /api/v1/voice/transcribe`、
+`POST /api/v1/voice/practice/{session_id}/turn`、`POST /api/v1/voice/speech`、
+`POST /api/v1/voice/practice/{session_id}/finish`。所有接口都要求当前用户身份，练习回合必须
+属于当前知识库。
+
+## 9. 测试
 
 ```powershell
 python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
@@ -176,7 +192,7 @@ python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
 #（该测试需要本机 11434 端口的 Ollama 服务，与 LightRAG 主链路无关）
 ```
 
-## 9. 本次改造的技术细节（2026-09-27）
+## 10. 本次改造的技术细节（2026-09-27）
 
 1. **docx 解析结构化**（`document_routes.py`）：原实现把段落拼成一串、表格变制表符文本；
    现按文档顺序遍历段落+表格，Heading 样式→`#` 层级，表格→`<table>` 原子块。
@@ -190,7 +206,7 @@ python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
    轮询容错（服务处理期丢弃 keep-alive 的瞬时 10053/10054）。
 5. **启动脚本** `start_kb.ps1/.bat`：内置 UTF-8 环境、端口探测、目录校验。
 
-## 10. 常见问题（FAQ）
+## 11. 常见问题（FAQ）
 
 **Q: upload 返回 502 / connection reset？**
 A: Python `httpx` 默认读系统注册表代理（本机 Clash 127.0.0.1:7897），
@@ -210,7 +226,7 @@ A: 确认 start_kb.ps1 无报错且端口 9621 监听；浏览器走系统代理
 A: 编辑 `.env` 的 `LLM_MODEL`（如 `Qwen/Qwen2.5-32B-Instruct` 或 Qwen3 系列），
 重启服务。Embedding 不要动（换维度需重建索引）。
 
-## 11. 存储损坏后的重建（一键修复）
+## 12. 存储损坏后的重建（一键修复）
 
 源文档都保存在 `inputs/` 与 `lightrag/api/routers/output/*.md`（OCR 抽取结果），
 即使 `rag_storage` 被写坏也随时可重建：
@@ -228,7 +244,7 @@ A: 编辑 `.env` 的 `LLM_MODEL`（如 `Qwen/Qwen2.5-32B-Instruct` 或 Qwen3 系
 要重建后常驻服务供 WebUI 使用，加 `-Keep`。
 重建全程约 10–15 分钟（单文档 1–3 分钟），期间保持窗口打开。
 
-## 12. 账户、迁移、备份和删除
+## 13. 账户、迁移、备份和删除
 
 开发环境保持 `PRODUCT_AUTH` 为空。控制台可以匿名使用，已有知识库归在迁移用户 `local-owner` 下。
 
@@ -264,7 +280,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-re
 `product_app.sqlite`。密钥轮换时先在模型平台更换密钥，再写入 `.env` 并重建容器，
 不要把 `.env` 提交到仓库。刷新令牌放在 HttpOnly Cookie 中，访问令牌只留在浏览器内存。
 
-## 13. 任务队列
+## 14. 任务队列
 
 上传和删除不再放在接口进程的内存里。接口只创建任务并返回 `job_id`，独立进程执行：
 

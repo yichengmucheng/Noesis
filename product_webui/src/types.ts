@@ -305,6 +305,33 @@ export interface MemoryItem {
   retrieval_reason?: string
 }
 
+export interface VoicePracticeSession {
+  id: string
+  owner_id?: string
+  kb_id: string
+  goal?: 'free' | 'recall' | 'interview' | 'review' | string
+  status?: 'active' | 'completed' | 'cancelled' | 'failed' | string
+  conversation_id?: string
+  summary?: string
+  created_at?: string
+  updated_at?: string
+  ended_at?: string
+  turns?: VoicePracticeTurn[]
+}
+
+export interface VoicePracticeTurn {
+  id: string
+  session_id: string
+  kb_id: string
+  transcript: string
+  answer?: string
+  citations?: Citation[]
+  memory_refs?: { marker?: string; content?: string; memory_id?: string }[]
+  audio_status?: string
+  status?: string
+  created_at?: string
+}
+
 export interface SourceReaderProps {
   documentId?: string
   citation: Citation

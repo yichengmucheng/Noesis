@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from lightrag.base import QueryParam
@@ -587,6 +587,27 @@ class MemoryPatch(BaseModel):
     scope: Optional[str] = None
     kb_id: Optional[str] = None
     expires_at: Optional[str] = None
+
+
+class VoiceSessionCreate(BaseModel):
+    kb_id: str
+    goal: str = "free"
+
+
+class VoiceTurnBody(BaseModel):
+    transcript: str
+    kb_id: Optional[str] = None
+
+
+class VoiceFinishBody(BaseModel):
+    summary: Optional[str] = None
+    kb_id: Optional[str] = None
+
+
+class VoiceSpeechBody(BaseModel):
+    turn_id: str
+    voice: Optional[str] = None
+    kb_id: Optional[str] = None
 
 
 class SearchBody(BaseModel):
@@ -1946,6 +1967,161 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         if not _app().delete_memory(memory_id, actor_id()):
             raise HTTPException(status_code=404, detail="记忆不存在")
         return {"ok": True}
+
+    def _voice_http_error(exc: Exception) -> HTTPException:
+        from lightrag.product_voice import VoiceProviderError
+
+        if isinstance(exc, VoiceProviderError):
+            return HTTPException(status_code=exc.status_code, detail=str(exc))
+        return HTTPException(status_code=503, detail="语音服务暂时不可用")
+
+    @router.post("/voice/practice/sessions")
+    async def create_voice_practice_session(body: VoiceSessionCreate):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        user_id = actor_id()
+        app = _app()
+        conversation = app.create_conversation(user_id, body.kb_id, "语音练习")
+        return app.create_voice_practice_session(
+            user_id,
+            body.kb_id,
+            goal=body.goal,
+            conversation_id=conversation["id"],
+        )
+
+    @router.get("/voice/practice/sessions")
+    async def list_voice_practice_sessions(kb_id: str, limit: int = 30):
+        data = await _read()
+        _find_kb(data, kb_id)
+        return {"items": _app().list_voice_practice_sessions(actor_id(), kb_id, limit=limit)}
+
+    @router.get("/voice/practice/sessions/{session_id}")
+    async def get_voice_practice_session(session_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        app = _app()
+        session = app.get_voice_practice_session(session_id, actor_id(), kb_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        session["turns"] = app.list_voice_practice_turns(session_id, actor_id(), kb_id)
+        return session
+
+    @router.post("/voice/transcribe")
+    async def transcribe_voice(file: UploadFile = File(...)):
+        from lightrag.product_voice import transcribe_audio
+
+        try:
+            audio = await file.read()
+            text = await transcribe_audio(audio, file.filename or "recording.webm", file.content_type or "")
+            return {"text": text}
+        except Exception as exc:
+            raise _voice_http_error(exc) from exc
+
+    @router.post("/voice/practice/{session_id}/turn")
+    async def voice_practice_turn(session_id: str, body: VoiceTurnBody):
+        transcript = (body.transcript or "").strip()
+        if not transcript:
+            raise HTTPException(status_code=400, detail="请先确认转写文本")
+        data = await _read()
+        session = _app().get_voice_practice_session(session_id, actor_id(), None)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        if body.kb_id and body.kb_id != session["kb_id"]:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        _find_kb(data, session["kb_id"])
+        if session["status"] != "active":
+            raise HTTPException(status_code=409, detail="练习已经结束")
+        body_for_chat = ChatBody(
+            query=transcript,
+            kb_id=session["kb_id"],
+            conversation_id=session.get("conversation_id") or None,
+            stream=False,
+        )
+        answer = ""
+        citations: list[dict[str, Any]] = []
+        memories: list[dict[str, Any]] = []
+        try:
+            async for event in _answer_events(body_for_chat):
+                if event.get("type") == "meta":
+                    citations = list(event.get("citations") or [])
+                elif event.get("type") == "done":
+                    answer = str(event.get("answer") or answer)
+                    citations = list(event.get("citations") or citations)
+                    memories = list(event.get("memories") or [])
+                elif event.get("type") == "error":
+                    raise HTTPException(status_code=503, detail=str(event.get("message") or "问答服务暂时不可用"))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("语音练习回合失败")
+            _app().add_voice_practice_turn(
+                session_id=session_id,
+                owner_id=actor_id(),
+                kb_id=session["kb_id"],
+                transcript=transcript,
+                status="failed",
+            )
+            raise HTTPException(status_code=503, detail="本轮回答失败，请重试") from exc
+        app = _app()
+        turn = app.add_voice_practice_turn(
+            session_id=session_id,
+            owner_id=actor_id(),
+            kb_id=session["kb_id"],
+            transcript=transcript,
+            answer=answer,
+            citations=citations,
+            memory_refs=memories,
+            status="completed" if answer else "failed",
+        )
+        return {
+            "turn_id": turn["id"],
+            "session_id": session_id,
+            "conversation_id": session.get("conversation_id") or "",
+            "transcript": transcript,
+            "answer": answer,
+            "citations": citations,
+            "memories": memories,
+            "audio_status": turn["audio_status"],
+        }
+
+    @router.post("/voice/speech")
+    async def voice_speech(body: VoiceSpeechBody):
+        from lightrag.product_voice import synthesize_speech
+
+        app = _app()
+        found = app.get_voice_practice_turn(body.turn_id, actor_id())
+        if found is None or found.get("status") != "completed" or (body.kb_id and found.get("kb_id") != body.kb_id):
+            raise HTTPException(status_code=404, detail="练习回答不存在")
+        app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "generating")
+        try:
+            audio, media_type = await synthesize_speech(found.get("answer") or "", body.voice)
+        except Exception as exc:
+            app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "failed")
+            raise _voice_http_error(exc) from exc
+        app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "ready")
+        return Response(content=audio, media_type=media_type, headers={"Cache-Control": "no-store"})
+
+    @router.post("/voice/practice/{session_id}/finish")
+    async def finish_voice_practice(session_id: str, body: VoiceFinishBody):
+        data = await _read()
+        session = _app().get_voice_practice_session(session_id, actor_id(), None)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        if body.kb_id and body.kb_id != session["kb_id"]:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        _find_kb(data, session["kb_id"])
+        turns = _app().list_voice_practice_turns(session_id, actor_id(), session["kb_id"])
+        summary = (body.summary or "").strip()
+        if not summary:
+            summary = f"本次练习完成 {len([item for item in turns if item.get('status') == 'completed'])} 轮。"
+        updated = _app().update_voice_practice_session(
+            session_id,
+            actor_id(),
+            session["kb_id"],
+            status="completed",
+            summary=summary,
+        )
+        return updated or session
 
     async def _remember_summary(session_id: str, kb_id: str, history: list[dict[str, Any]]) -> None:
         _recent, older = window_and_older(history)
