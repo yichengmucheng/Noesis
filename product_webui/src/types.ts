@@ -139,6 +139,17 @@ export interface Citation {
   parent_content?: string
 }
 
+export interface SourceContent {
+  source_kind?: string
+  text?: string
+  units?: Array<Record<string, unknown>>
+  layout?: string
+  notice?: string
+  doc_name?: string
+  document_id?: string
+  version_id?: string
+}
+
 export interface DocumentSource {
   document_id?: string
   version_id?: string
@@ -172,6 +183,28 @@ export interface ChatEvent {
   answer?: string
   answerable?: boolean
   degraded?: boolean
+  conversation_id?: string
+}
+
+export interface ConversationItem {
+  id: string
+  title?: string
+  summary?: string
+  is_pinned?: boolean
+  is_archived?: boolean
+  updated_at?: string
+  last_message_at?: string
+}
+
+export interface StoredMessage {
+  id: string
+  conversation_id?: string
+  role: 'user' | 'assistant' | string
+  content: string
+  status?: string
+  citations?: Citation[]
+  created_at?: string
+  retrieval_meta?: { memories?: { marker?: string; content?: string }[] }
 }
 
 export interface ProductCapabilities {
@@ -248,7 +281,22 @@ export interface KbSettings {
   audit_reject_comment?: boolean
 }
 
-/** 原文阅读器尚未接通。有预览接口后再实现这个组件，当前不要渲染入口。 */
+export interface MemoryCandidate {
+  id: string
+  content: string
+  category?: string
+  status?: string
+  kb_id?: string
+}
+
+export interface MemoryItem {
+  id: string
+  content: string
+  category?: string
+  enabled?: boolean
+  source_type?: string
+}
+
 export interface SourceReaderProps {
   documentId?: string
   citation: Citation

@@ -8,9 +8,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from lightrag.answer_pipeline import (
+    CONFLICT_HINT,
     DETAIL_HINT,
+    MEMORY_NOTICE,
     REFUSAL,
     SYSTEM_PROMPT,
+    apply_memory_markers,
     build_messages,
     cache_entry_usable,
     normalize_detail,
@@ -74,10 +77,28 @@ def test_detail_levels_change_prompt_budget_not_system_rules():
         assert "节温器打不开" in user
     assert prompts["concise"].count("父") < prompts["standard"].count("父") < prompts["detailed"].count("父")
     assert "只写结论" in prompts["concise"]
+    assert "80字以内" in prompts["concise"]
+    assert "220字以内" in prompts["standard"]
+    assert "600字以内" in prompts["detailed"]
     assert "关键解释" in prompts["standard"]
     assert "分点" in prompts["detailed"]
     assert normalize_detail("brief") == "concise"
     assert normalize_detail("normal") == "standard"
+
+
+def test_confirmed_memories_use_m_markers_and_do_not_replace_documents():
+    memories = [{"id": "m1", "content": "用户偏好简洁回答"}]
+    _system, user = build_messages("现在怎么办", [_hit()], [], None, memories=memories)
+    assert "[C1]" in user
+    assert "[M1] 用户偏好简洁回答" in user
+    assert "记忆不能作为原始文档证据" in user
+    applied = apply_memory_markers("资料结论 [C1]，习惯 [M1]", memories, has_documents=True)
+    assert "[M1]" in applied["answer"]
+    assert CONFLICT_HINT in applied["answer"]
+    pending_only = apply_memory_markers("不要用未确认 [M1]", [], has_documents=False)
+    assert "[M1]" not in pending_only["answer"]
+    memory_only = apply_memory_markers("按习惯 [M1]", memories, has_documents=False)
+    assert MEMORY_NOTICE in memory_only["answer"]
 
 
 def test_validator_drops_forged_cross_kb_and_stale_versions():
@@ -382,12 +403,102 @@ def test_source_api_isolates_owner_kb_version_and_deleted_files(tmp_path, monkey
     assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id}, headers=stranger).status_code == 404
     assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": other_kb}, headers=owner).status_code == 404
     assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id, "version_id": "missing"}, headers=owner).status_code == 404
+    content = client.get("/api/v1/documents/doc-note/content", params={"kb_id": kb_id, "unit_id": "t0001"}, headers=owner)
+    assert content.status_code == 200, content.text
+    assert "第一段" in content.json()["text"]
+    assert "storage_key" not in content.text
+    assert str(inputs) not in content.text
+    downloaded = client.get("/api/v1/documents/doc-note/download", params={"kb_id": kb_id}, headers=owner)
+    assert downloaded.status_code == 200, downloaded.text
+    assert "attachment;" in downloaded.headers["content-disposition"]
+    assert "note.txt" in downloaded.headers["content-disposition"]
+    preview = client.get("/api/v1/documents/doc-note/preview", params={"kb_id": kb_id}, headers=owner)
+    assert preview.status_code == 200
+    for path in ("content", "download", "preview"):
+        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": kb_id}, headers=stranger).status_code == 404
+        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": other_kb}, headers=owner).status_code == 404
+        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": kb_id, "version_id": "missing"}, headers=owner).status_code == 404
+
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    def escape(data):
+        data["doc_index"]["doc-note"]["storage_key"] = str(outside)
+
+    mutate_shell(working, escape)
+    assert client.get("/api/v1/documents/doc-note/download", params={"kb_id": kb_id}, headers=owner).status_code == 404
+    assert "secret" not in client.get("/api/v1/documents/doc-note/content", params={"kb_id": kb_id}, headers=owner).text
+
+    def restore(data):
+        data["doc_index"]["doc-note"]["storage_key"] = str(stored)
+
+    mutate_shell(working, restore)
+    slides = inputs / "deck.pptx"
+    slides.write_bytes(b"PK\x03\x04")
+
+    def office(data):
+        data["doc_index"]["doc-office"] = {
+            "kb_id": kb_id,
+            "owner_id": owner_id,
+            "display_name": "deck.pptx",
+            "storage_key": str(slides),
+        }
+
+    mutate_shell(working, office)
+    office_preview = client.get("/api/v1/documents/doc-office/preview", params={"kb_id": kb_id}, headers=owner)
+    assert office_preview.status_code == 415
 
     def remove(data):
         data["doc_index"]["doc-note"]["deleted_at"] = "2026-01-01T00:00:00Z"
 
     mutate_shell(working, remove)
     assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id}, headers=owner).status_code == 404
+
+
+def test_empty_manifest_model_requires_rebuild(tmp_path, monkeypatch):
+    from lightrag.index_manifest import compatibility_error
+
+    working = tmp_path / "rag"
+    working.mkdir()
+    (working / "vdb_chunks.json").write_text("{}", encoding="utf-8")
+    (working / "index_manifest.json").write_text(json.dumps({
+        "schema_version": 1,
+        "embedding_model": "",
+        "embedding_dimension": 2560,
+        "embedding_instruction": "",
+        "normalization": "l2",
+        "chunking_version": "retrieval-180-350-overlap-45",
+        "parent_chunk_version": "parent-800-1500-section",
+    }), encoding="utf-8")
+    monkeypatch.setenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")
+    monkeypatch.delenv("EMBEDDING_DIM", raising=False)
+    monkeypatch.delenv("EMBEDDING_INSTRUCTION", raising=False)
+    monkeypatch.delenv("EMBEDDING_BINDING", raising=False)
+    blocked = compatibility_error(working)
+    assert blocked["status"] == "index_rebuild_required"
+    assert "embedding 模型不一致" in blocked["reason"]
+
+
+def test_cache_rejects_changed_document_version():
+    entry = {
+        "user_id": "user-a",
+        "kb_id": "kb",
+        "tenant": "default",
+        "kb_version": "v1",
+        "index_version": "idx",
+        "detail": "standard",
+        "prompt_version": "answer-v2",
+        "model": "llm",
+        "mode": "mix",
+        "chunk_ids": ["c1"],
+        "document_versions": {"doc-1": "v1"},
+    }
+    kwargs = dict(
+        kb_id="kb", tenant="default", kb_version="v1", mode="mix", model="llm",
+        live_chunk_ids={"c1"}, user_id="user-a", index_version="idx", detail="standard",
+    )
+    assert cache_entry_usable(entry, document_versions={"doc-1": "v1"}, **kwargs)
+    assert not cache_entry_usable(entry, document_versions={"doc-1": "v2"}, **kwargs)
 
 
 def test_cancelled_stream_does_not_save_partial_answer(tmp_path, monkeypatch):

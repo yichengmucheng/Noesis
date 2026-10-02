@@ -4,7 +4,7 @@ import { Layout, Menu, Button, Typography, Spin, Grid, Drawer, Tooltip } from 'a
 import {
   FileTextOutlined, MessageOutlined, SearchOutlined, ApartmentOutlined,
   SettingOutlined, DiffOutlined, AuditOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  UserOutlined, ToolOutlined,
+  UserOutlined, ToolOutlined, BookOutlined,
 } from '@ant-design/icons'
 import { kbApi } from '../../api'
 import AccountDrawer from '../../components/AccountDrawer'
@@ -15,6 +15,7 @@ const { Text } = Typography
 const PRIMARY = [
   { key: 'documents', icon: <FileTextOutlined />, label: '资料' },
   { key: 'chat', icon: <MessageOutlined />, label: '问答' },
+  { key: 'memory', icon: <BookOutlined />, label: '记忆' },
 ]
 
 const ADVANCED = [

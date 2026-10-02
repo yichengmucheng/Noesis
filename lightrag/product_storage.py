@@ -1012,6 +1012,9 @@ def execute_purge(
     job["checked_doc_ids"] = doc_ids
     job["checked_chunk_ids"] = sorted(known_chunks)
     save_shell(working_dir, data)
+    from lightrag.product_appdb import open_appdb
+
+    open_appdb(working_dir).purge_kb(kb_id)
     try:
         removed = remove_documents(
             working_dir,

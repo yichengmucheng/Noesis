@@ -26,8 +26,11 @@ Qwen2.5-7B 实体关系抽取（领域 ontology：设备/部件/故障定义/一
 |------|------|------|
 | Python | 3.12（Anaconda） | `D:\anaconda` |
 | LLM | SiliconFlow `Qwen/Qwen2.5-7B-Instruct` | `.env` 中 `LLM_BINDING_*` |
-| Embedding | SiliconFlow `BAAI/bge-m3`（1024 维） | `.env` 中 `EMBEDDING_*` |
+| Embedding | 运行配置中的 `EMBEDDING_MODEL`。当前计划为 `Qwen/Qwen3-Embedding-4B` | `.env` 与 `index_manifest.json` |
+| Rerank | 运行配置中的 `RERANK_MODEL`。当前计划为 `Qwen/Qwen3-Reranker-4B` | `.env` 中 `RERANK_*` |
 | 密钥 | `.env`（真实密钥，勿入库/勿提交） | 根目录 |
+
+界面上的能力、索引状态和检索诊断显示的是当前进程配置和索引清单里的模型，不使用代码里的固定模型名。嵌入模型、维度、instruction 或切块版本与清单不一致时，系统会停止查询旧向量并要求重建索引。
 
 > ⚠️ 密钥安全：`.env` 含真实 API Key。如需分发，先轮换密钥再用 `env.example` 重新生成。
 

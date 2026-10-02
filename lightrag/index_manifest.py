@@ -82,7 +82,7 @@ def manifest_mismatches(manifest: dict[str, Any] | None) -> list[str]:
         reasons.append("清单结构版本不一致")
     expected_model = _env("EMBEDDING_MODEL")
     actual_model = str(manifest.get("embedding_model") or "")
-    if expected_model and actual_model and expected_model != actual_model:
+    if expected_model and actual_model != expected_model:
         reasons.append("embedding 模型不一致")
     expected_provider = _env("EMBEDDING_BINDING")
     actual_provider = str(manifest.get("embedding_provider") or "")

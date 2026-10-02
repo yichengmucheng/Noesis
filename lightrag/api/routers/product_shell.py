@@ -537,7 +537,41 @@ class ChatBody(BaseModel):
     history: list[dict[str, Any]] = Field(default_factory=list)
     stream: Optional[bool] = False
     session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     answer_detail: Optional[str] = None
+
+
+class ConversationCreate(BaseModel):
+    kb_id: str
+    title: Optional[str] = None
+
+
+class ConversationPatch(BaseModel):
+    kb_id: str
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    is_archived: Optional[bool] = None
+
+
+class FeedbackBody(BaseModel):
+    kb_id: str
+    rating: str
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class MemoryCandidateBody(BaseModel):
+    kb_id: str
+    content: str
+    category: Optional[str] = "other"
+    conversation_id: Optional[str] = None
+    message_id: Optional[str] = None
+
+
+class MemoryPatch(BaseModel):
+    content: Optional[str] = None
+    category: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 class SearchBody(BaseModel):
@@ -603,6 +637,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def _write(data: dict[str, Any]) -> None:
         async with _STORE_LOCK:
             store.save(data)
+
+    def _app():
+        from lightrag.product_appdb import open_appdb
+
+        return open_appdb(Path(rag.working_dir))
+
+    def _conversation_title(query: str) -> str:
+        text = " ".join((query or "").split())
+        if not text:
+            return "新会话"
+        return text[:32] + ("…" if len(text) > 32 else "")
 
     async def _bind_user(request: Request, authorization: str | None = Header(default=None)):
         path = request.url.path.rstrip("/")
@@ -1118,6 +1163,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         kb = _find_kb(data, kb_id)
         job = begin_purge(data, kb)
         await _write(data)
+        from lightrag.product_appdb import open_appdb
+
+        open_appdb(Path(rag.working_dir)).purge_kb(kb_id)
         created = _enqueue_purge(job, kb_id)
         return {"message": "已移入回收站，正在清理", **created}
 
@@ -1261,6 +1309,28 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         start = max(page - 1, 0) * page_size
         return {"items": visible[start : start + page_size], "total": total}
 
+    def _owned_source(data: dict[str, Any], doc_id: str, kb_id: str, version_id: str = ""):
+        from lightrag.product_parse import load_document
+        from lightrag.product_source import resolve_owned_file, source_kind
+
+        _find_kb(data, kb_id)
+        row = (data.get("doc_index") or {}).get(doc_id)
+        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        owner = str(row.get("owner_id") or "")
+        if owner and owner != actor_id():
+            raise HTTPException(status_code=404, detail="来源不存在")
+        document = load_document(rag.working_dir, doc_id)
+        if version_id and (document is None or document.version_id != version_id):
+            raise HTTPException(status_code=404, detail="来源不存在")
+        storage = str(row.get("storage_key") or "")
+        path = resolve_owned_file(input_dir, storage) if storage else None
+        if storage and path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        kind = source_kind(name, document.source_type if document else "")
+        return row, document, path, name, kind
+
     @router.get("/documents/{doc_id}/source")
     async def document_source(
         doc_id: str,
@@ -1269,31 +1339,69 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         chunk_id: str = "",
         unit_id: str = "",
     ):
-        from lightrag.product_parse import load_document
         from lightrag.product_source import build_source_view
 
         data = await _read()
-        _find_kb(data, kb_id)
-        row = (data.get("doc_index") or {}).get(doc_id)
-        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
-            raise HTTPException(status_code=404, detail="来源不存在")
-        owner = str(row.get("owner_id") or "")
-        if owner and owner != actor_id():
-            raise HTTPException(status_code=404, detail="来源不存在")
-        storage = str(row.get("storage_key") or "")
-        if storage:
-            path = Path(storage)
-            if not path.is_file():
-                raise HTTPException(status_code=404, detail="来源不存在")
-        document = load_document(rag.working_dir, doc_id)
-        if version_id and (document is None or document.version_id != version_id):
-            raise HTTPException(status_code=404, detail="来源不存在")
-        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        _row, document, _path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
         payload = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
         payload["document_id"] = doc_id
         if document:
             payload["version_id"] = document.version_id
         return payload
+
+    @router.get("/documents/{doc_id}/content")
+    async def document_content(
+        doc_id: str,
+        kb_id: str,
+        version_id: str = "",
+        chunk_id: str = "",
+        unit_id: str = "",
+    ):
+        from lightrag.product_source import build_reading, build_source_view
+
+        data = await _read()
+        _row, document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        file_text = ""
+        if path is not None and kind in {"text", "markdown"}:
+            file_text = path.read_text(encoding="utf-8", errors="replace")
+        payload = build_reading(document, kind=kind, file_text=file_text)
+        located = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
+        payload.update({
+            "document_id": doc_id,
+            "version_id": document.version_id if document else "",
+            "doc_name": name,
+            "unit": located["unit"],
+            "matched_chunk": located["matched_chunk"],
+        })
+        return payload
+
+    def _file_response(path: Path, name: str, inline: bool):
+        from fastapi.responses import FileResponse
+        from lightrag.product_source import content_disposition, mime_of
+
+        return FileResponse(
+            path,
+            media_type=mime_of(name),
+            headers={"Content-Disposition": content_disposition(name, inline=inline)},
+        )
+
+    @router.get("/documents/{doc_id}/download")
+    async def document_download(doc_id: str, kb_id: str, version_id: str = ""):
+        data = await _read()
+        _row, _document, path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        return _file_response(path, name, inline=False)
+
+    @router.get("/documents/{doc_id}/preview")
+    async def document_preview(doc_id: str, kb_id: str, version_id: str = ""):
+        data = await _read()
+        _row, _document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        if kind not in {"pdf", "text", "markdown"}:
+            raise HTTPException(status_code=415, detail="该格式暂不提供原件预览")
+        return _file_response(path, name, inline=True)
 
     @router.post("/documents")
     async def upload_document(
@@ -1622,6 +1730,187 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 parts.append(f"{public['id']}:{public.get('updated_at')}:{public.get('chunk_count')}")
         return "|".join(sorted(parts))
 
+    @router.get("/conversations")
+    async def list_conversations(kb_id: str, q: str = "", archived: bool = False):
+        data = await _read()
+        _find_kb(data, kb_id)
+        items = _app().list_conversations(actor_id(), kb_id, q=q, archived=archived)
+        return {"items": items}
+
+    @router.post("/conversations")
+    async def create_conversation(body: ConversationCreate):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        return _app().create_conversation(actor_id(), body.kb_id, body.title or "新会话")
+
+    @router.get("/conversations/{conversation_id}")
+    async def get_conversation(conversation_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        item = _app().get_conversation(conversation_id, actor_id(), kb_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return item
+
+    @router.patch("/conversations/{conversation_id}")
+    async def patch_conversation(conversation_id: str, body: ConversationPatch):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        item = _app().update_conversation(
+            conversation_id,
+            actor_id(),
+            body.kb_id,
+            title=body.title,
+            summary=body.summary,
+            is_archived=body.is_archived,
+        )
+        if item is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return item
+
+    @router.delete("/conversations/{conversation_id}")
+    async def delete_conversation(conversation_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        if not _app().delete_conversation(conversation_id, actor_id(), kb_id):
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return {"ok": True}
+
+    @router.post("/conversations/{conversation_id}/pin")
+    async def pin_conversation(conversation_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        store = _app()
+        current = store.get_conversation(conversation_id, actor_id(), kb_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        item = store.update_conversation(
+            conversation_id, actor_id(), kb_id, is_pinned=not current["is_pinned"]
+        )
+        return item
+
+    @router.post("/conversations/{conversation_id}/archive")
+    async def archive_conversation(conversation_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        item = _app().update_conversation(
+            conversation_id, actor_id(), kb_id, is_archived=True
+        )
+        if item is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return item
+
+    @router.get("/conversations/{conversation_id}/messages")
+    async def list_conversation_messages(conversation_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        store = _app()
+        if store.get_conversation(conversation_id, actor_id(), kb_id) is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return {"items": store.list_messages(conversation_id, actor_id(), kb_id)}
+
+    @router.post("/messages/{message_id}/feedback")
+    async def message_feedback(message_id: str, body: FeedbackBody):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        rating = (body.rating or "").strip()
+        if rating not in {"positive", "negative"}:
+            raise HTTPException(status_code=400, detail="反馈类型无效")
+        reason = (body.reason or "").strip()
+        allowed = {"answer_wrong", "citation_wrong", "not_found", "outdated", "unclear", "other"}
+        if rating == "negative" and reason not in allowed:
+            raise HTTPException(status_code=400, detail="请选择反馈原因")
+        store = _app()
+        message_row = store.get_message(message_id, actor_id(), body.kb_id)
+        if message_row is None or message_row["role"] != "assistant":
+            raise HTTPException(status_code=404, detail="消息不存在")
+        question = ""
+        for item in store.list_messages(message_row["conversation_id"], actor_id(), body.kb_id):
+            if item["id"] == message_id:
+                break
+            if item["role"] == "user":
+                question = item["content"]
+        return store.add_feedback(
+            message_id=message_id,
+            owner_id=actor_id(),
+            kb_id=body.kb_id,
+            rating=rating,
+            reason=reason if rating == "negative" else "",
+            comment=(body.comment or "")[:500],
+            question=question,
+            answer=message_row["content"],
+            citations=list(message_row.get("citations") or []),
+            index_version=str(message_row.get("index_version") or ""),
+            embedding_model=str(message_row.get("embedding_model") or ""),
+            rerank_model=str(message_row.get("rerank_model") or ""),
+            llm_model=str(message_row.get("llm_model") or ""),
+        )
+
+    @router.get("/memory-candidates")
+    async def list_memory_candidates(kb_id: str, status: str = "pending"):
+        data = await _read()
+        _find_kb(data, kb_id)
+        items = _app().list_memory_candidates(actor_id(), kb_id, status=status or "pending")
+        return {"items": items}
+
+    @router.post("/memory-candidates")
+    async def create_memory_candidate(body: MemoryCandidateBody):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        content = (body.content or "").strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="记忆内容不能为空")
+        return _app().add_memory_candidate(
+            owner_id=actor_id(),
+            kb_id=body.kb_id,
+            content=content[:800],
+            category=(body.category or "other")[:32],
+            conversation_id=body.conversation_id or "",
+            message_id=body.message_id or "",
+            status="pending",
+        )
+
+    @router.post("/memory-candidates/{candidate_id}/accept")
+    async def accept_memory_candidate(candidate_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        item = _app().accept_memory_candidate(candidate_id, actor_id(), kb_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="记忆候选不存在或已处理")
+        return item
+
+    @router.post("/memory-candidates/{candidate_id}/reject")
+    async def reject_memory_candidate(candidate_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        item = _app().set_candidate_status(candidate_id, actor_id(), "rejected", kb_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="记忆候选不存在")
+        return item
+
+    @router.get("/memories")
+    async def list_memories():
+        return {"items": _app().list_memories(actor_id())}
+
+    @router.patch("/memories/{memory_id}")
+    async def patch_memory(memory_id: str, body: MemoryPatch):
+        item = _app().update_memory(
+            memory_id,
+            actor_id(),
+            content=body.content,
+            category=body.category,
+            enabled=body.enabled,
+        )
+        if item is None:
+            raise HTTPException(status_code=404, detail="记忆不存在")
+        return item
+
+    @router.delete("/memories/{memory_id}")
+    async def delete_memory(memory_id: str):
+        if not _app().delete_memory(memory_id, actor_id()):
+            raise HTTPException(status_code=404, detail="记忆不存在")
+        return {"ok": True}
+
     async def _remember_summary(session_id: str, kb_id: str, history: list[dict[str, Any]]) -> None:
         _recent, older = window_and_older(history)
         data = await _read()
@@ -1697,13 +1986,27 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         index_version = str((manifest or {}).get("corpus_revision") or "")
         owner = str(kb.get("owner_id") or actor_id())
         bindings = data.get("file_bindings") or {}
-        session_id = (body.session_id or f"{body.kb_id}:default").strip()
-        summary = ((data.get("sessions") or {}).get(session_id) or {}).get("summary")
-        history = [
-            {"role": item.get("role"), "content": item.get("content", "")}
-            for item in body.history
-            if item.get("role") in {"user", "assistant"} and item.get("content")
-        ]
+        user_id = actor_id()
+        app = _app()
+        conversation = None
+        if body.conversation_id:
+            conversation = app.get_conversation(body.conversation_id, user_id, body.kb_id)
+            if conversation is None:
+                raise HTTPException(status_code=404, detail="会话不存在")
+        else:
+            conversation = app.create_conversation(user_id, body.kb_id, _conversation_title(body.query))
+        app.add_message(
+            conversation_id=conversation["id"],
+            owner_id=user_id,
+            kb_id=body.kb_id,
+            role="user",
+            content=body.query.strip(),
+            status="completed",
+        )
+        history = app.history_for_answer(conversation["id"], user_id, body.kb_id)
+        if history and history[-1]["role"] == "user" and history[-1]["content"] == body.query.strip():
+            history = history[:-1]
+        summary = {"text": conversation.get("summary") or ""} if conversation.get("summary") else None
 
         def file_in_kb(file_path: str, record: dict | None = None) -> bool:
             payload = dict(record or {})
@@ -1723,76 +2026,128 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             if document:
                 live_versions[doc_id] = document.version_id
         done = None
-        async for event in stream_answer(
-            rag,
-            query=body.query.strip(),
-            mode=mode_name,
-            ratio=float(ratio),
-            kb_chunks=kb_chunks,
-            file_in_kb=file_in_kb,
-            history=history,
-            summary=summary,
-            kb_id=body.kb_id,
-            tenant="default",
-            kb_version=version,
-            user_id=actor_id(),
-            cache_entries=_load_cache(),
-            top_k=top_k,
-            enable_rerank=bool(rerank_enabled),
-            score_threshold=score_threshold,
-            expand_context=bool(expand_context),
-            detail=detail,
-            index_version=index_version,
-            owner_id=owner,
-            working_dir=Path(rag.working_dir),
-            live_versions=live_versions,
-        ):
-            if event.get("type") == "done":
-                done = event
-            yield event
-        if not done or done.get("complete") is False:
-            return
-        answer = str(done.get("answer") or "")
-        fresh = await _read()
-        fresh.setdefault("qa_pairs", []).insert(0, {
-            "id": uuid4().hex,
-            "kb_id": body.kb_id,
-            "question": body.query,
-            "answer": answer[:2000],
-            "doc_id": "",
-            "doc_name": "",
-            "source": "chat",
-            "updated_at": _now(),
-        })
-        fresh["qa_pairs"] = fresh["qa_pairs"][:200]
-        await _write(fresh)
-        if done.get("store_cache") and done.get("embedding"):
-            entries = _load_cache()
-            entries.append({
-                "query": done.get("rewritten") or body.query,
-                "embedding": done.get("embedding"),
-                "kb_id": body.kb_id,
-                "user_id": actor_id(),
-                "tenant": "default",
-                "kb_version": version,
-                "prompt_version": PROMPT_VERSION,
-                "model": os.getenv("LLM_MODEL") or "",
-                "mode": mode_name,
-                "detail": detail,
-                "index_version": index_version,
-                "chunk_ids": done.get("chunk_ids") or [],
-                "citations": done.get("citations") or [],
-                "answer": answer[:2000],
-                "created_at": _now(),
-            })
-            _save_cache(entries)
-        extended = history + [
-            {"role": "user", "content": body.query},
-            {"role": "assistant", "content": answer},
-        ]
-        task = asyncio.create_task(_remember_summary(session_id, body.kb_id, extended))
-        _BACKGROUND_TASKS.add(task)
-        task.add_done_callback(_BACKGROUND_TASKS.discard)
+        saved_assistant = False
+        models = {
+            "index_version": index_version,
+            "embedding_model": os.getenv("EMBEDDING_MODEL") or "",
+            "rerank_model": os.getenv("RERANK_MODEL") or "",
+            "llm_model": os.getenv("LLM_MODEL") or "",
+        }
+
+        def _save_assistant(status: str, content: str = "", citations: list | None = None, meta: dict | None = None):
+            nonlocal saved_assistant
+            if saved_assistant:
+                return None
+            row = app.add_message(
+                conversation_id=conversation["id"],
+                owner_id=user_id,
+                kb_id=body.kb_id,
+                role="assistant",
+                content=content,
+                status=status,
+                citations=citations or [],
+                retrieval_meta=meta or {},
+                **models,
+            )
+            saved_assistant = True
+            return row
+
+        memories = app.enabled_memories(user_id)
+        try:
+            first = True
+            async for event in stream_answer(
+                rag,
+                query=body.query.strip(),
+                mode=mode_name,
+                ratio=float(ratio),
+                kb_chunks=kb_chunks,
+                file_in_kb=file_in_kb,
+                history=history,
+                summary=summary,
+                kb_id=body.kb_id,
+                tenant="default",
+                kb_version=version,
+                user_id=user_id,
+                cache_entries=_load_cache(),
+                top_k=top_k,
+                enable_rerank=bool(rerank_enabled),
+                score_threshold=score_threshold,
+                expand_context=bool(expand_context),
+                detail=detail,
+                index_version=index_version,
+                owner_id=owner,
+                working_dir=Path(rag.working_dir),
+                live_versions=live_versions,
+                memories=memories,
+            ):
+                if first:
+                    event = {**event, "conversation_id": conversation["id"]}
+                    first = False
+                if event.get("type") == "done":
+                    done = event
+                if event.get("type") == "error":
+                    _save_assistant("failed", "")
+                yield event
+            if done and done.get("complete") is not False:
+                answer = str(done.get("answer") or "")
+                saved = _save_assistant(
+                    "completed",
+                    answer,
+                    list(done.get("citations") or []),
+                    {
+                        "mode": mode_name,
+                        "detail": detail,
+                        "answerable": done.get("answerable"),
+                        "memories": done.get("memories") or [],
+                    },
+                )
+                for item in done.get("memory_candidates") or []:
+                    content = str(item.get("content") or "").strip()
+                    if not content:
+                        continue
+                    app.add_memory_candidate(
+                        owner_id=user_id,
+                        kb_id=body.kb_id,
+                        content=content,
+                        category=str(item.get("category") or "other"),
+                        conversation_id=conversation["id"],
+                        message_id=str((saved or {}).get("id") or ""),
+                        source_refs=list(done.get("citations") or []),
+                        status="pending",
+                    )
+                if done.get("store_cache") and done.get("embedding"):
+                    entries = _load_cache()
+                    entries.append({
+                        "query": done.get("rewritten") or body.query,
+                        "embedding": done.get("embedding"),
+                        "kb_id": body.kb_id,
+                        "user_id": user_id,
+                        "tenant": "default",
+                        "kb_version": version,
+                        "prompt_version": PROMPT_VERSION,
+                        "model": os.getenv("LLM_MODEL") or "",
+                        "mode": mode_name,
+                        "detail": detail,
+                        "index_version": index_version,
+                        "document_versions": {
+                            str(item.get("document_id") or ""): str(item.get("version_id") or "")
+                            for item in (done.get("citations") or [])
+                            if item.get("document_id") and item.get("version_id")
+                        },
+                        "chunk_ids": done.get("chunk_ids") or [],
+                        "citations": done.get("citations") or [],
+                        "answer": answer[:2000],
+                        "created_at": _now(),
+                    })
+                    _save_cache(entries)
+            elif not saved_assistant:
+                _save_assistant("failed", "")
+        except (asyncio.CancelledError, GeneratorExit):
+            _save_assistant("stopped", "")
+            raise
+        except Exception:
+            _save_assistant("failed", "")
+            raise
 
     @router.post("/chat")
     async def chat(body: ChatBody):

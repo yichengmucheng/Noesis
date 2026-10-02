@@ -589,7 +589,9 @@ def _real_embed_one_factory():
     if os.getenv("RUN_REAL_RETRIEVAL_EVAL") != "1":
         raise RuntimeError("真实模型评测需要显式设置 RUN_REAL_RETRIEVAL_EVAL=1")
     key = os.getenv("EMBEDDING_BINDING_API_KEY") or os.getenv("LLM_BINDING_API_KEY") or ""
-    model = os.getenv("EMBEDDING_MODEL") or "BAAI/bge-m3"
+    model = os.getenv("EMBEDDING_MODEL") or ""
+    if not model:
+        raise RuntimeError("真实向量模型配置不完整")
     host = os.getenv("EMBEDDING_BINDING_HOST") or os.getenv("LLM_BINDING_HOST") or ""
     if not key or not host:
         raise RuntimeError("真实向量模型配置不完整")
