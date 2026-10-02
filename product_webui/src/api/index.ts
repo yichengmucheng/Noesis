@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type {
-  DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings,
+  DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings, SourceContent,
   KnowledgeBase, ProductCapabilities, ProductJob, PurgeJob, SearchResponse,
 } from '../types'
 
@@ -175,6 +175,15 @@ export const docApi = {
 
   source: (docId: string, params: { kb_id: string; version_id?: string; chunk_id?: string; unit_id?: string }) =>
     http.get<any, DocumentSource>(`/documents/${docId}/source`, { params }),
+
+  content: (docId: string, params: { kb_id: string; version_id?: string; chunk_id?: string; unit_id?: string }) =>
+    http.get<any, SourceContent>(`/documents/${docId}/content`, { params }),
+
+  preview: (docId: string, params: { kb_id: string; version_id?: string }) =>
+    http.get<any, Blob>(`/documents/${docId}/preview`, { params, responseType: 'blob' }),
+
+  download: (docId: string, params: { kb_id: string; version_id?: string }) =>
+    http.get<any, Blob>(`/documents/${docId}/download`, { params, responseType: 'blob' }),
 
   cancel: (kbId: string, name: string, docId = '') =>
     http.post<any, any>('/documents/cancel', null, { params: { kb_id: kbId, name, doc_id: docId } }),

@@ -1,4 +1,4 @@
-"""检索测试的六种模式。重排固定用 bge-reranker-v2-m3 交叉编码器。"""
+"""检索测试的六种模式。重排模型只使用运行配置里的 RERANK_MODEL。"""
 
 from __future__ import annotations
 
@@ -22,8 +22,7 @@ from lightrag.search_strategies import (
 )
 from lightrag.utils import logger
 
-RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
-_HYDE_PROMPT = """你是故障诊断报告撰写人。根据下面的问题，写一段可能出现在故障报告正文里的说明，写清可能涉及的部件、现象、原因和措施。
+_HYDE_PROMPT = """你是个人知识库助手。根据下面的问题，写一段可能出现在用户资料里的说明。
 只输出这段说明，80到160字。不要写“假设”“问题是”。
 
 问题：{query}
@@ -571,7 +570,7 @@ async def _rerank(
     from lightrag.retrieval_orchestrator import rerank_document
 
     configured_model = os.getenv("RERANK_MODEL") or ""
-    model = configured_model or RERANK_MODEL
+    model = configured_model
     host = os.getenv("RERANK_BINDING_HOST") or "https://api.siliconflow.cn/v1/rerank"
     info = {
         "enabled": True,
@@ -583,6 +582,9 @@ async def _rerank(
     }
     if not hits:
         info["applied"] = True
+        return hits, info
+    if not model:
+        info["warning"] = "未配置重排模型"
         return hits, info
     pool = hits[: info["pool_size"]]
     documents = [rerank_document(item) for item in pool]

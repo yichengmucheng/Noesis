@@ -1261,6 +1261,28 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         start = max(page - 1, 0) * page_size
         return {"items": visible[start : start + page_size], "total": total}
 
+    def _owned_source(data: dict[str, Any], doc_id: str, kb_id: str, version_id: str = ""):
+        from lightrag.product_parse import load_document
+        from lightrag.product_source import resolve_owned_file, source_kind
+
+        _find_kb(data, kb_id)
+        row = (data.get("doc_index") or {}).get(doc_id)
+        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        owner = str(row.get("owner_id") or "")
+        if owner and owner != actor_id():
+            raise HTTPException(status_code=404, detail="来源不存在")
+        document = load_document(rag.working_dir, doc_id)
+        if version_id and (document is None or document.version_id != version_id):
+            raise HTTPException(status_code=404, detail="来源不存在")
+        storage = str(row.get("storage_key") or "")
+        path = resolve_owned_file(input_dir, storage) if storage else None
+        if storage and path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        kind = source_kind(name, document.source_type if document else "")
+        return row, document, path, name, kind
+
     @router.get("/documents/{doc_id}/source")
     async def document_source(
         doc_id: str,
@@ -1269,31 +1291,69 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         chunk_id: str = "",
         unit_id: str = "",
     ):
-        from lightrag.product_parse import load_document
         from lightrag.product_source import build_source_view
 
         data = await _read()
-        _find_kb(data, kb_id)
-        row = (data.get("doc_index") or {}).get(doc_id)
-        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
-            raise HTTPException(status_code=404, detail="来源不存在")
-        owner = str(row.get("owner_id") or "")
-        if owner and owner != actor_id():
-            raise HTTPException(status_code=404, detail="来源不存在")
-        storage = str(row.get("storage_key") or "")
-        if storage:
-            path = Path(storage)
-            if not path.is_file():
-                raise HTTPException(status_code=404, detail="来源不存在")
-        document = load_document(rag.working_dir, doc_id)
-        if version_id and (document is None or document.version_id != version_id):
-            raise HTTPException(status_code=404, detail="来源不存在")
-        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        _row, document, _path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
         payload = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
         payload["document_id"] = doc_id
         if document:
             payload["version_id"] = document.version_id
         return payload
+
+    @router.get("/documents/{doc_id}/content")
+    async def document_content(
+        doc_id: str,
+        kb_id: str,
+        version_id: str = "",
+        chunk_id: str = "",
+        unit_id: str = "",
+    ):
+        from lightrag.product_source import build_reading, build_source_view
+
+        data = await _read()
+        _row, document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        file_text = ""
+        if path is not None and kind in {"text", "markdown"}:
+            file_text = path.read_text(encoding="utf-8", errors="replace")
+        payload = build_reading(document, kind=kind, file_text=file_text)
+        located = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
+        payload.update({
+            "document_id": doc_id,
+            "version_id": document.version_id if document else "",
+            "doc_name": name,
+            "unit": located["unit"],
+            "matched_chunk": located["matched_chunk"],
+        })
+        return payload
+
+    def _file_response(path: Path, name: str, inline: bool):
+        from fastapi.responses import FileResponse
+        from lightrag.product_source import content_disposition, mime_of
+
+        return FileResponse(
+            path,
+            media_type=mime_of(name),
+            headers={"Content-Disposition": content_disposition(name, inline=inline)},
+        )
+
+    @router.get("/documents/{doc_id}/download")
+    async def document_download(doc_id: str, kb_id: str, version_id: str = ""):
+        data = await _read()
+        _row, _document, path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        return _file_response(path, name, inline=False)
+
+    @router.get("/documents/{doc_id}/preview")
+    async def document_preview(doc_id: str, kb_id: str, version_id: str = ""):
+        data = await _read()
+        _row, _document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="来源不存在")
+        if kind not in {"pdf", "text", "markdown"}:
+            raise HTTPException(status_code=415, detail="该格式暂不提供原件预览")
+        return _file_response(path, name, inline=True)
 
     @router.post("/documents")
     async def upload_document(
@@ -1780,6 +1840,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 "mode": mode_name,
                 "detail": detail,
                 "index_version": index_version,
+                "document_versions": {
+                    str(item.get("document_id") or ""): str(item.get("version_id") or "")
+                    for item in (done.get("citations") or [])
+                    if item.get("document_id") and item.get("version_id")
+                },
                 "chunk_ids": done.get("chunk_ids") or [],
                 "citations": done.get("citations") or [],
                 "answer": answer[:2000],

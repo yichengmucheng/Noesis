@@ -245,6 +245,27 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 "preview": {"available": False, "kind": "text", "url": None},
             }, ensure_ascii=False))
 
+        def content(route):
+            if "doc-gone" in route.request.url:
+                route.fulfill(status=404, content_type="application/json", body='{"detail":"来源不存在"}')
+                return
+            if "unit_id=none" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "source_kind": "text",
+                    "text": "旧摘录",
+                    "units": [],
+                    "layout": "original",
+                    "doc_name": "旧笔记.txt",
+                }, ensure_ascii=False))
+                return
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                "source_kind": "text",
+                "text": "第一行\n第二行\n第三行\n命中句子\n第五行",
+                "units": [],
+                "layout": "original",
+                "doc_name": "笔记.txt",
+            }, ensure_ascii=False))
+
         def search(route):
             calls["search"] += 1
             route.fulfill(status=200, content_type="application/json", body=json.dumps({
@@ -293,6 +314,7 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.route("**/api/v1/kb/purge-jobs/**", checks)
             page.route("**/api/v1/chat/stream", chat)
             page.route(re.compile(r"/api/v1/documents"), documents)
+            page.route(re.compile(r"/api/v1/documents/.+/content"), content)
             page.route(re.compile(r"/api/v1/documents/.+/source"), source)
             page.goto(f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded")
             page.get_by_test_id("auth-switch").click()
@@ -390,6 +412,7 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_text("答案见 [1]").wait_for()
             page.get_by_test_id("citation-open").click()
             page.get_by_test_id("source-drawer").wait_for()
+            page.get_by_test_id("source-reader").wait_for()
             drawer = page.get_by_test_id("source-drawer").inner_text()
             assert "笔记.txt" in drawer
             assert "第3页" in drawer
@@ -415,7 +438,16 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             assert "第4行" in located
             assert "命中句子" in located
             assert "打开原文" not in located
+            assert "已找到来源，但暂无精确位置" not in located
             page.locator(".ant-drawer-open .ant-drawer-close").click()
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.get_by_test_id("citation-mark").last.click()
+            page.get_by_test_id("source-reader").wait_for()
+            page.get_by_test_id("text-highlight").wait_for()
+            reader_width = page.get_by_test_id("source-reader").evaluate("node => node.getBoundingClientRect().width")
+            assert reader_width >= 320
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+            page.set_viewport_size({"width": 1280, "height": 800})
 
             box.fill("无位置")
             page.get_by_role("button", name="发送").click()

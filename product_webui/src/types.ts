@@ -139,6 +139,17 @@ export interface Citation {
   parent_content?: string
 }
 
+export interface SourceContent {
+  source_kind?: string
+  text?: string
+  units?: Array<Record<string, unknown>>
+  layout?: string
+  notice?: string
+  doc_name?: string
+  document_id?: string
+  version_id?: string
+}
+
 export interface DocumentSource {
   document_id?: string
   version_id?: string
@@ -248,7 +259,6 @@ export interface KbSettings {
   audit_reject_comment?: boolean
 }
 
-/** 原文阅读器尚未接通。有预览接口后再实现这个组件，当前不要渲染入口。 */
 export interface SourceReaderProps {
   documentId?: string
   citation: Citation

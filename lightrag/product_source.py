@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from lightrag.product_document_ir import DocumentIR, SourceUnit
 
@@ -100,7 +103,7 @@ def build_source_view(
     parent = parent_context or (_parent_text(document, unit) if document else "")
     if parent == source_text:
         parent = ""
-    preview_kind = "text" if source_text else "none"
+    preview_kind = "pdf" if kind == "pdf" else ("text" if source_text or kind in {"text", "markdown"} else "none")
     return {
         "document_id": document.document_id if document else "",
         "version_id": document.version_id if document else "",
@@ -111,5 +114,56 @@ def build_source_view(
         "matched_chunk": {"chunk_id": chunk_id, "excerpt": (excerpt or source_text)[:500]},
         "parent_context": parent[:1200],
         "source_text": source_text[:4000],
-        "preview": {"available": False, "kind": preview_kind, "url": None},
+        "preview": {"available": kind == "pdf", "kind": preview_kind, "url": None},
+        "layout": "structured" if kind in {"docx", "pptx", "xlsx"} else "original",
+    }
+
+
+def safe_download_name(name: str) -> str:
+    base = Path(str(name or "").replace("\\", "/")).name
+    cleaned = re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]", "_", base).strip("._")
+    return (cleaned or "download")[:120]
+
+
+def content_disposition(name: str, inline: bool = False) -> str:
+    filename = safe_download_name(name)
+    kind = "inline" if inline else "attachment"
+    return f"{kind}; filename*=UTF-8''{quote(filename)}"
+
+
+def resolve_owned_file(input_dir: Path, storage_key: str) -> Path | None:
+    """只打开输入目录内、且由 doc_index 记录的文件。"""
+    raw = Path(str(storage_key or ""))
+    if not str(storage_key or "").strip() or any(part == ".." for part in raw.parts):
+        return None
+    root = Path(input_dir).resolve()
+    candidate = raw if raw.is_absolute() else root / raw
+    try:
+        path = candidate.resolve()
+    except OSError:
+        return None
+    if path != root and root not in path.parents:
+        return None
+    if not path.is_file():
+        return None
+    return path
+
+
+def build_reading(document: DocumentIR | None, *, kind: str, file_text: str = "") -> dict[str, Any]:
+    units = []
+    if document is not None:
+        for unit in document.walk():
+            if not unit.content and not unit.section_path and unit.page_number is None and unit.slide_number is None:
+                continue
+            view = _unit_view(unit)
+            view["unit_type"] = unit.unit_type
+            view["content"] = (unit.content or "")[:1000]
+            units.append(view)
+    structured = kind in {"docx", "pptx", "xlsx"}
+    return {
+        "source_kind": kind,
+        "text": file_text[:200000] if kind in {"text", "markdown"} else "",
+        "units": units[:400],
+        "layout": "structured" if structured else "original",
+        "notice": "这是结构化阅读视图，不是原始 Office 排版。" if structured else "",
     }
