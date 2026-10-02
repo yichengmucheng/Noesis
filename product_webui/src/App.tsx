@@ -11,6 +11,7 @@ import ComparisonPage from './pages/Comparison'
 import AuditPage from './pages/Audit'
 import GraphPage from './pages/Graph'
 import ChatPage from './pages/Chat'
+import MemoryPage from './pages/Memory'
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '')
 
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="audit"      element={<AuditPage />} />
           <Route path="graph"      element={<GraphPage />} />
           <Route path="chat"       element={<ChatPage />} />
+          <Route path="memory"     element={<MemoryPage />} />
         </Route>
       </Routes>
       </AuthGate>

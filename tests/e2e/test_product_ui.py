@@ -185,6 +185,57 @@ def test_product_navigation_account_jobs_chat(tmp_path):
 
         held = []
         bodies = []
+        workspace = {"items": [], "messages": [], "seq": 1}
+
+        def conversations(route):
+            method = route.request.method
+            path = route.request.url.split("?")[0].rstrip("/")
+            if not workspace["items"] and workspace["messages"]:
+                workspace["items"] = [{"id": "conv-1", "title": "新会话", "is_pinned": False, "is_archived": False}]
+            if method == "POST" and path.endswith("/conversations"):
+                item = {
+                    "id": f"conv-{workspace['seq']}",
+                    "title": "新会话",
+                    "is_pinned": False,
+                    "is_archived": False,
+                }
+                workspace["seq"] += 1
+                workspace["items"].insert(0, item)
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                return
+            if method == "GET" and path.endswith("/messages"):
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": workspace["messages"]}, ensure_ascii=False))
+                return
+            if method == "POST" and path.endswith("/pin"):
+                conv_id = path.split("/")[-2]
+                for item in workspace["items"]:
+                    if item["id"] == conv_id:
+                        item["is_pinned"] = not item.get("is_pinned")
+                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        return
+            if method == "POST" and path.endswith("/archive"):
+                conv_id = path.split("/")[-2]
+                for item in workspace["items"]:
+                    if item["id"] == conv_id:
+                        item["is_archived"] = True
+                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        return
+            if method == "PATCH":
+                conv_id = path.split("/")[-1]
+                body = json.loads(route.request.post_data or "{}")
+                for item in workspace["items"]:
+                    if item["id"] == conv_id:
+                        item.update({key: body[key] for key in ("title", "is_archived") if key in body})
+                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        return
+            if method == "DELETE":
+                conv_id = path.split("/")[-1]
+                workspace["items"] = [item for item in workspace["items"] if item["id"] != conv_id]
+                route.fulfill(status=200, content_type="application/json", body='{"ok": true}')
+                return
+            archived = "archived=true" in route.request.url
+            items = [item for item in workspace["items"] if bool(item.get("is_archived")) == archived]
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": items}, ensure_ascii=False))
 
         def chat(route):
             body = json.loads(route.request.post_data or "{}")
@@ -215,9 +266,44 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 )
             else:
                 payload = (
-                    'data: {"type":"meta","citations":[{"doc_name":"笔记.txt","excerpt":"命中句子","parent_content":"所在章节的补充","page_number":3}]}\n\n'
+                    'data: {"type":"meta","citations":[{"citation_id":"C1","doc_name":"笔记.txt","document_id":"doc-1","chunk_id":"c1","unit_id":"p3","excerpt":"命中句子","parent_content":"所在章节的补充","page_number":3}]}\n\n'
                     'data: {"type":"token","text":"答案见 [1]"}\n\n'
+                    'data: {"type":"done","answer":"答案见 [1]","answerable":true,"complete":true,"citations":[{"citation_id":"C1","doc_name":"笔记.txt","document_id":"doc-1","chunk_id":"c1","unit_id":"p3","excerpt":"命中句子","parent_content":"所在章节的补充","page_number":3}]}\n\n'
                 )
+            if query != "失败问题":
+                answers = {
+                    "编号问题": "答案见 [C1]",
+                    "无位置": "没有坐标 [C1]",
+                    "失效来源": "旧引用 [C1]",
+                    "没有资料": "",
+                }
+                conv = body.get("conversation_id") or "conv-1"
+                if not workspace["items"]:
+                    workspace["items"] = [{"id": conv, "title": "新会话", "is_pinned": False, "is_archived": False}]
+                unit = "p3"
+                if query == "编号问题":
+                    unit = "t1"
+                if query == "无位置":
+                    unit = "none"
+                if query == "没有资料":
+                    citations = []
+                else:
+                    citations = [{
+                        "citation_id": "C1",
+                        "doc_name": "笔记.txt" if query != "失效来源" else "已删.txt",
+                        "document_id": "doc-gone" if query == "失效来源" else "doc-1",
+                        "chunk_id": "c1",
+                        "unit_id": unit,
+                        "excerpt": "命中句子",
+                        "parent_content": "所在章节的补充",
+                        "page_number": 3 if query not in {"编号问题", "无位置", "失效来源"} else None,
+                        "line_start": 4 if query == "编号问题" else None,
+                        "line_end": 4 if query == "编号问题" else None,
+                    }]
+                workspace["messages"] = [
+                    {"id": "u1", "role": "user", "content": query, "status": "completed"},
+                    {"id": "a1", "role": "assistant", "content": answers.get(query, "答案见 [1]"), "status": "completed", "citations": citations},
+                ]
             route.fulfill(status=200, content_type="text/event-stream", body=payload)
 
         def source(route):
@@ -235,10 +321,21 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                     "preview": {"available": False, "kind": "none", "url": None},
                 }, ensure_ascii=False))
                 return
+            if "unit_id=t1" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "doc_name": "笔记.txt",
+                    "source_kind": "text",
+                    "unit": {"page_number": None, "line_start": 4, "line_end": 4, "section_path": ["冷却系统"]},
+                    "matched_chunk": {"excerpt": "命中句子"},
+                    "parent_context": "所在章节的补充",
+                    "source_text": "命中句子",
+                    "preview": {"available": False, "kind": "text", "url": None},
+                }, ensure_ascii=False))
+                return
             route.fulfill(status=200, content_type="application/json", body=json.dumps({
                 "doc_name": "笔记.txt",
                 "source_kind": "text",
-                "unit": {"page_number": None, "line_start": 4, "line_end": 4, "section_path": ["冷却系统"]},
+                "unit": {"page_number": 3, "slide_number": None, "section_path": [], "line_start": None, "line_end": None, "bbox": None},
                 "matched_chunk": {"excerpt": "命中句子"},
                 "parent_context": "所在章节的补充",
                 "source_text": "命中句子",
@@ -316,6 +413,18 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.route(re.compile(r"/api/v1/documents"), documents)
             page.route(re.compile(r"/api/v1/documents/.+/content"), content)
             page.route(re.compile(r"/api/v1/documents/.+/source"), source)
+            page.route(re.compile(r"/api/v1/conversations"), conversations)
+            page.route(re.compile(r"/api/v1/messages/.+/feedback"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
+            page.route(re.compile(r"/api/v1/memory-candidates"), lambda route: (
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(
+                    {"id": "cand-1", "content": "偏好简洁", "category": "preference", "status": "pending"} if route.request.method == "POST" else {"items": [{"id": "cand-1", "content": "偏好简洁", "category": "preference", "status": "pending"}]},
+                    ensure_ascii=False,
+                ))
+            ))
+            page.route(re.compile(r"/api/v1/memory-candidates/.+/accept"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"id": "mem-1", "content": "偏好简洁", "enabled": True}, ensure_ascii=False)))
+            page.route(re.compile(r"/api/v1/memory-candidates/.+/reject"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
+            page.route(re.compile(r"/api/v1/memories$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [{"id": "mem-1", "content": "偏好简洁", "enabled": True, "category": "preference"}]}, ensure_ascii=False)))
+            page.route(re.compile(r"/api/v1/memories/.+"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
             page.goto(f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded")
             page.get_by_test_id("auth-switch").click()
             page.get_by_test_id("email").fill("ui.browser@example.com")
@@ -404,12 +513,14 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             assert "Qwen/Qwen3-Embedding-4B" in diag
 
             page.get_by_test_id("nav-chat").click()
-            page.get_by_role("heading", name="问答").wait_for()
+            page.get_by_test_id("conversation-list").wait_for()
             _forbid(page.locator("body").inner_text())
             box = page.get_by_placeholder("输入问题，Shift+Enter 换行，Enter 发送")
             box.fill("核心结论")
             page.get_by_role("button", name="发送").click()
             page.get_by_text("答案见 [1]").wait_for()
+            page.get_by_test_id("save-memory").click()
+            page.get_by_test_id("chat-like").click()
             page.get_by_test_id("citation-open").click()
             page.get_by_test_id("source-drawer").wait_for()
             page.get_by_test_id("source-reader").wait_for()
@@ -420,6 +531,10 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             assert "命中句子" in drawer
             assert "补充上下文" in drawer
             page.locator(".ant-drawer-open .ant-drawer-close").click()
+            page.reload(wait_until="domcontentloaded")
+            page.get_by_test_id("nav-chat").click()
+            page.get_by_test_id("conversation-item").first.click()
+            page.get_by_text("答案见 [1]").wait_for()
             page.get_by_test_id("chat-copy").click()
             copied = page.evaluate("() => navigator.clipboard.readText()")
             assert copied == "答案见 [1]"
@@ -503,6 +618,13 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 assert word not in chat_text
 
             page.set_viewport_size({"width": 390, "height": 844})
+            page.get_by_test_id("conversation-open").click()
+            page.get_by_test_id("conversation-drawer").wait_for()
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+            page.get_by_test_id("nav-memory").click()
+            page.get_by_test_id("memory-page").wait_for()
+            page.get_by_test_id("memory-accept").click()
+            page.get_by_test_id("memory-item").wait_for()
             page.get_by_test_id("nav-documents").click()
             page.get_by_role("heading", name="资料").wait_for()
             page.get_by_test_id("nav-advanced").click()

@@ -183,6 +183,28 @@ export interface ChatEvent {
   answer?: string
   answerable?: boolean
   degraded?: boolean
+  conversation_id?: string
+}
+
+export interface ConversationItem {
+  id: string
+  title?: string
+  summary?: string
+  is_pinned?: boolean
+  is_archived?: boolean
+  updated_at?: string
+  last_message_at?: string
+}
+
+export interface StoredMessage {
+  id: string
+  conversation_id?: string
+  role: 'user' | 'assistant' | string
+  content: string
+  status?: string
+  citations?: Citation[]
+  created_at?: string
+  retrieval_meta?: { memories?: { marker?: string; content?: string }[] }
 }
 
 export interface ProductCapabilities {
@@ -257,6 +279,22 @@ export interface KbSettings {
   mark_number_changes?: boolean
   audit_auto_pass?: boolean
   audit_reject_comment?: boolean
+}
+
+export interface MemoryCandidate {
+  id: string
+  content: string
+  category?: string
+  status?: string
+  kb_id?: string
+}
+
+export interface MemoryItem {
+  id: string
+  content: string
+  category?: string
+  enabled?: boolean
+  source_type?: string
 }
 
 export interface SourceReaderProps {

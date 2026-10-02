@@ -8,9 +8,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from lightrag.answer_pipeline import (
+    CONFLICT_HINT,
     DETAIL_HINT,
+    MEMORY_NOTICE,
     REFUSAL,
     SYSTEM_PROMPT,
+    apply_memory_markers,
     build_messages,
     cache_entry_usable,
     normalize_detail,
@@ -81,6 +84,21 @@ def test_detail_levels_change_prompt_budget_not_system_rules():
     assert "分点" in prompts["detailed"]
     assert normalize_detail("brief") == "concise"
     assert normalize_detail("normal") == "standard"
+
+
+def test_confirmed_memories_use_m_markers_and_do_not_replace_documents():
+    memories = [{"id": "m1", "content": "用户偏好简洁回答"}]
+    _system, user = build_messages("现在怎么办", [_hit()], [], None, memories=memories)
+    assert "[C1]" in user
+    assert "[M1] 用户偏好简洁回答" in user
+    assert "记忆不能作为原始文档证据" in user
+    applied = apply_memory_markers("资料结论 [C1]，习惯 [M1]", memories, has_documents=True)
+    assert "[M1]" in applied["answer"]
+    assert CONFLICT_HINT in applied["answer"]
+    pending_only = apply_memory_markers("不要用未确认 [M1]", [], has_documents=False)
+    assert "[M1]" not in pending_only["answer"]
+    memory_only = apply_memory_markers("按习惯 [M1]", memories, has_documents=False)
+    assert MEMORY_NOTICE in memory_only["answer"]
 
 
 def test_validator_drops_forged_cross_kb_and_stale_versions():

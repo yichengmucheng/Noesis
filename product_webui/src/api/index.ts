@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings, SourceContent,
   KnowledgeBase, ProductCapabilities, ProductJob, PurgeJob, SearchResponse,
+  ConversationItem, StoredMessage, MemoryCandidate, MemoryItem,
 } from '../types'
 
 localStorage.removeItem('kb-refresh')
@@ -286,4 +287,40 @@ export const auditApi = {
     http.put<any, any>(`/kb/audit/${itemId}`, null, {
       params: { kb_id: kbId, action, comment },
     }),
+}
+
+export const workspaceApi = {
+  listConversations: (kbId: string, params?: { q?: string; archived?: boolean }) =>
+    http.get<any, { items: ConversationItem[] }>('/conversations', { params: { kb_id: kbId, ...params } }),
+  createConversation: (kbId: string, title?: string) =>
+    http.post<any, ConversationItem>('/conversations', { kb_id: kbId, title }),
+  getConversation: (id: string, kbId: string) =>
+    http.get<any, ConversationItem>(`/conversations/${id}`, { params: { kb_id: kbId } }),
+  patchConversation: (id: string, data: { kb_id: string; title?: string; is_archived?: boolean }) =>
+    http.patch<any, ConversationItem>(`/conversations/${id}`, data),
+  deleteConversation: (id: string, kbId: string) =>
+    http.delete<any, { ok: boolean }>(`/conversations/${id}`, { params: { kb_id: kbId } }),
+  pinConversation: (id: string, kbId: string) =>
+    http.post<any, ConversationItem>(`/conversations/${id}/pin`, {}, { params: { kb_id: kbId } }),
+  archiveConversation: (id: string, kbId: string) =>
+    http.post<any, ConversationItem>(`/conversations/${id}/archive`, {}, { params: { kb_id: kbId } }),
+  listMessages: (id: string, kbId: string) =>
+    http.get<any, { items: StoredMessage[] }>(`/conversations/${id}/messages`, { params: { kb_id: kbId } }),
+  feedback: (messageId: string, data: { kb_id: string; rating: 'positive' | 'negative'; reason?: string; comment?: string }) =>
+    http.post<any, any>(`/messages/${messageId}/feedback`, data),
+}
+
+export const memoryApi = {
+  listCandidates: (kbId: string, status = 'pending') =>
+    http.get<any, { items: MemoryCandidate[] }>('/memory-candidates', { params: { kb_id: kbId, status } }),
+  createCandidate: (data: { kb_id: string; content: string; category?: string; conversation_id?: string; message_id?: string }) =>
+    http.post<any, MemoryCandidate>('/memory-candidates', data),
+  accept: (id: string, kbId: string) =>
+    http.post<any, MemoryItem>(`/memory-candidates/${id}/accept`, {}, { params: { kb_id: kbId } }),
+  reject: (id: string, kbId: string) =>
+    http.post<any, MemoryCandidate>(`/memory-candidates/${id}/reject`, {}, { params: { kb_id: kbId } }),
+  list: () => http.get<any, { items: MemoryItem[] }>('/memories'),
+  patch: (id: string, data: { content?: string; category?: string; enabled?: boolean }) =>
+    http.patch<any, MemoryItem>(`/memories/${id}`, data),
+  remove: (id: string) => http.delete<any, { ok: boolean }>(`/memories/${id}`),
 }
