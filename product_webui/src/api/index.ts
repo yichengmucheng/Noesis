@@ -319,8 +319,8 @@ export const memoryApi = {
     http.post<any, MemoryItem>(`/memory-candidates/${id}/accept`, {}, { params: { kb_id: kbId } }),
   reject: (id: string, kbId: string) =>
     http.post<any, MemoryCandidate>(`/memory-candidates/${id}/reject`, {}, { params: { kb_id: kbId } }),
-  list: () => http.get<any, { items: MemoryItem[] }>('/memories'),
-  patch: (id: string, data: { content?: string; category?: string; enabled?: boolean }) =>
+  list: (kbId?: string) => http.get<any, { items: MemoryItem[] }>('/memories', { params: kbId ? { kb_id: kbId } : {} }),
+  patch: (id: string, data: { content?: string; category?: string; enabled?: boolean; scope?: string; kb_id?: string; expires_at?: string }) =>
     http.patch<any, MemoryItem>(`/memories/${id}`, data),
   remove: (id: string) => http.delete<any, { ok: boolean }>(`/memories/${id}`),
 }

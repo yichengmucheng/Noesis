@@ -295,6 +295,14 @@ export interface MemoryItem {
   category?: string
   enabled?: boolean
   source_type?: string
+  scope?: 'global' | 'kb' | string
+  kb_id?: string
+  expires_at?: string
+  source_status?: string
+  created_at?: string
+  updated_at?: string
+  memory_score?: number
+  retrieval_reason?: string
 }
 
 export interface SourceReaderProps {

@@ -75,9 +75,9 @@ def test_conversation_crud_isolation_and_kb_purge(tmp_path, monkeypatch):
     assert searched[0]["id"] == conv_id
 
     store = open_appdb(working)
-    assert store.schema_versions() == ["app-001", "app-002", "app-003"]
+    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004"]
     store.migrate()
-    assert store.schema_versions() == ["app-001", "app-002", "app-003"]
+    assert store.schema_versions() == ["app-001", "app-002", "app-003", "app-004"]
 
     doc_before = {"doc-keep": {"kb_id": kb_id, "display_name": "note.txt"}}
 
@@ -259,19 +259,19 @@ def test_memory_confirm_isolation_and_kb_purge_keeps_user_memories(tmp_path, mon
     assert accepted.json()["content"] == "模型提出的偏好"
     assert client.get("/api/v1/memory-candidates", params={"kb_id": kb_id}, headers=owner).json()["items"] == []
 
-    client.post("/api/v1/chat/stream", json={"query": "再用一次", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
+    client.post("/api/v1/chat/stream", json={"query": "模型提出的偏好再用一次", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
     assert any(item["content"] == "模型提出的偏好" for item in captured["memories"])
 
     memory_id = client.get("/api/v1/memories", headers=owner).json()["items"][0]["id"]
     assert client.patch(f"/api/v1/memories/{memory_id}", json={"enabled": False}, headers=stranger).status_code == 404
     disabled = client.patch(f"/api/v1/memories/{memory_id}", json={"enabled": False}, headers=owner)
     assert disabled.json()["enabled"] is False
-    client.post("/api/v1/chat/stream", json={"query": "关闭后", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
+    client.post("/api/v1/chat/stream", json={"query": "模型提出的偏好关闭后", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
     assert all(item["content"] != "模型提出的偏好" for item in captured["memories"])
 
     edited = client.patch(f"/api/v1/memories/{memory_id}", json={"content": "改成详细", "enabled": True}, headers=owner)
     assert edited.json()["content"] == "改成详细"
-    client.post("/api/v1/chat/stream", json={"query": "编辑后", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
+    client.post("/api/v1/chat/stream", json={"query": "改成详细", "kb_id": kb_id, "conversation_id": conv_id}, headers=owner)
     assert any(item["content"] == "改成详细" for item in captured["memories"])
 
     extra = client.post("/api/v1/memory-candidates", json={"kb_id": kb_id, "content": "待清理候选"}, headers=owner).json()
@@ -284,5 +284,8 @@ def test_memory_confirm_isolation_and_kb_purge_keeps_user_memories(tmp_path, mon
     kept = store.get_memory(memory_id, owner_id)
     assert kept is not None
     assert kept["content"] == "改成详细"
+    assert kept["scope"] == "kb"
+    assert kept["source_status"] == "deleted"
+    assert kept["enabled"] is False
     assert client.delete(f"/api/v1/memories/{memory_id}", headers=owner).status_code == 200
     assert store.get_memory(memory_id, owner_id) is None

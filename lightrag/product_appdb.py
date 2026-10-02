@@ -2,21 +2,24 @@
 
 开发环境使用 SQLite，表结构按后续 PostgreSQL 迁移来写。
 会话和消息不写入 product_shell.json。
-查询必须同时匹配 owner_id 和 kb_id。
+知识库数据必须匹配 owner_id 和 kb_id；用户级记忆显式标记为 global，不能隐式跨用户共享。
 """
 
 from __future__ import annotations
 
 import json
+import math
+import re
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 
-SCHEMA_VERSION = "app-003"
+SCHEMA_VERSION = "app-004"
 APP_DB_NAME = "product_app.sqlite"
 
 _STORES: dict[str, "AppStore"] = {}
@@ -127,6 +130,19 @@ _MIGRATIONS = (
             ON memories(owner_id, enabled, updated_at);
         """,
     ),
+    (
+        "app-004",
+        """
+        ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';
+        ALTER TABLE memories ADD COLUMN kb_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE memories ADD COLUMN expires_at TEXT NOT NULL DEFAULT '';
+        ALTER TABLE memories ADD COLUMN source_status TEXT NOT NULL DEFAULT 'active';
+        ALTER TABLE memories ADD COLUMN embedding_json TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE memories ADD COLUMN embedding_model TEXT NOT NULL DEFAULT '';
+        CREATE INDEX IF NOT EXISTS idx_memories_scope
+            ON memories(owner_id, scope, kb_id, enabled, source_status, expires_at, updated_at);
+        """,
+    ),
 )
 
 
@@ -134,8 +150,104 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _memory_terms(text: str) -> list[str]:
+    raw = str(text or "").lower()
+    terms = re.findall(r"[\u4e00-\u9fff]|[a-z0-9_]+", raw)
+    return list(dict.fromkeys(term for term in terms if term.strip()))
+
+
+def _keyword_overlap(query_terms: list[str], memory_terms: list[str]) -> float:
+    if not query_terms or not memory_terms:
+        return 0.0
+    overlap = len(set(query_terms) & set(memory_terms))
+    return min(1.0, overlap / max(1, min(len(query_terms), 6)))
+
+
+def _cosine(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    dot = sum(float(a) * float(b) for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(float(a) * float(a) for a in left))
+    right_norm = math.sqrt(sum(float(b) * float(b) for b in right))
+    if not left_norm or not right_norm:
+        return 0.0
+    return max(0.0, dot / (left_norm * right_norm))
+
+
+def _memory_token_count(text: str) -> int:
+    return max(1, len(_memory_terms(text))) if str(text or "").strip() else 0
+
+
 def app_db_path(working_dir: Path) -> Path:
     return Path(working_dir) / APP_DB_NAME
+
+
+def _commit_with_retry(conn: sqlite3.Connection, attempts: int = 6) -> None:
+    for attempt in range(attempts):
+        try:
+            conn.commit()
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+def _pragma_with_retry(conn: sqlite3.Connection, statement: str, attempts: int = 20) -> None:
+    for attempt in range(attempts):
+        try:
+            conn.execute(statement)
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+def backup_appdb(working_dir: Path, destination: Path) -> Path:
+    """Create a consistent SQLite backup, including WAL contents."""
+    source = open_appdb(working_dir)
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with source._lock:
+        target = sqlite3.connect(str(destination))
+        try:
+            source._conn.backup(target)
+            target.commit()
+        finally:
+            target.close()
+    return destination
+
+
+def restore_appdb(working_dir: Path, backup_path: Path) -> Path:
+    """Replace the application database from a validated SQLite backup."""
+    backup_path = Path(backup_path)
+    check = sqlite3.connect(str(backup_path))
+    try:
+        result = check.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != "ok":
+            raise sqlite3.DatabaseError(f"备份完整性检查失败: {result}")
+    finally:
+        check.close()
+    target_path = app_db_path(working_dir)
+    reset_appdb_cache()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target = sqlite3.connect(str(target_path))
+    source = sqlite3.connect(str(backup_path))
+    try:
+        source.backup(target)
+        target.commit()
+    finally:
+        source.close()
+        target.close()
+    reset_appdb_cache()
+    return target_path
+
+
+def appdb_integrity_check(working_dir: Path) -> str:
+    store = open_appdb(working_dir)
+    with store._lock:
+        return str(store._conn.execute("PRAGMA integrity_check").fetchone()[0])
 
 
 def open_appdb(working_dir: Path) -> "AppStore":
@@ -160,9 +272,12 @@ class AppStore:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=8.0)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
+        _pragma_with_retry(self._conn, "PRAGMA journal_mode = WAL")
+        _pragma_with_retry(self._conn, "PRAGMA synchronous = NORMAL")
+        _pragma_with_retry(self._conn, "PRAGMA busy_timeout = 8000")
+        _pragma_with_retry(self._conn, "PRAGMA foreign_keys = ON")
         self.migrate()
 
     def close(self) -> None:
@@ -191,7 +306,7 @@ class AppStore:
                     "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                     (version, _now()),
                 )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
 
     def schema_versions(self) -> list[str]:
         rows = self._all("SELECT version FROM schema_migrations ORDER BY applied_at")
@@ -224,7 +339,7 @@ class AppStore:
                 """,
                 row,
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self._public_conversation(row)
 
     def get_conversation(self, conversation_id: str, owner_id: str, kb_id: str) -> dict[str, Any] | None:
@@ -295,7 +410,7 @@ class AppStore:
                     kb_id,
                 ),
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self.get_conversation(conversation_id, owner_id, kb_id)
 
     def delete_conversation(self, conversation_id: str, owner_id: str, kb_id: str) -> bool:
@@ -315,7 +430,7 @@ class AppStore:
                 "DELETE FROM conversations WHERE id = ? AND owner_id = ? AND kb_id = ?",
                 (conversation_id, owner_id, kb_id),
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return True
 
     def add_message(
@@ -374,7 +489,7 @@ class AppStore:
                 """,
                 (now, now, conversation_id, owner_id, kb_id),
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self._public_message(row)
 
     def list_messages(self, conversation_id: str, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
@@ -471,7 +586,7 @@ class AppStore:
                         now,
                     ),
                 )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self._public_feedback(payload)
 
     def list_offline_eval(self, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
@@ -544,7 +659,7 @@ class AppStore:
                 """,
                 row,
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self._public_candidate(row)
 
     def get_memory_candidate(self, candidate_id: str, owner_id: str, kb_id: str | None = None) -> dict[str, Any] | None:
@@ -590,10 +705,18 @@ class AppStore:
                 "UPDATE memory_candidates SET status = ? WHERE id = ? AND owner_id = ?",
                 (status, candidate_id, owner_id),
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self.get_memory_candidate(candidate_id, owner_id, kb_id)
 
-    def accept_memory_candidate(self, candidate_id: str, owner_id: str, kb_id: str | None = None) -> dict[str, Any] | None:
+    def accept_memory_candidate(
+        self,
+        candidate_id: str,
+        owner_id: str,
+        kb_id: str | None = None,
+        *,
+        embedding: list[float] | None = None,
+        embedding_model: str = "",
+    ) -> dict[str, Any] | None:
         current = self.get_memory_candidate(candidate_id, owner_id, kb_id)
         if current is None or current["status"] != "pending":
             return None
@@ -603,6 +726,10 @@ class AppStore:
             category=current["category"],
             source_type="candidate",
             source_id=current["id"],
+            scope="kb",
+            kb_id=kb_id or current.get("kb_id") or "",
+            embedding=embedding,
+            embedding_model=embedding_model,
         )
         self.set_candidate_status(candidate_id, owner_id, "accepted", kb_id)
         return memory
@@ -616,8 +743,16 @@ class AppStore:
         source_type: str = "candidate",
         source_id: str = "",
         enabled: bool = True,
+        scope: str = "global",
+        kb_id: str = "",
+        expires_at: str = "",
+        source_status: str = "active",
+        embedding: list[float] | None = None,
+        embedding_model: str = "",
     ) -> dict[str, Any]:
         now = _now()
+        scope = scope if scope in {"global", "kb"} else "global"
+        kb_id = str(kb_id or "") if scope == "kb" else ""
         row = {
             "id": uuid4().hex,
             "owner_id": owner_id,
@@ -626,6 +761,12 @@ class AppStore:
             "source_type": source_type,
             "source_id": source_id,
             "enabled": 1 if enabled else 0,
+            "scope": scope,
+            "kb_id": kb_id,
+            "expires_at": str(expires_at or ""),
+            "source_status": source_status if source_status in {"active", "deleted", "unavailable", "expired"} else "active",
+            "embedding_json": json.dumps(embedding or [], ensure_ascii=False),
+            "embedding_model": embedding_model or "",
             "created_at": now,
             "updated_at": now,
         }
@@ -633,25 +774,34 @@ class AppStore:
             self._conn.execute(
                 """
                 INSERT INTO memories(
-                    id, owner_id, content, category, source_type, source_id, enabled, created_at, updated_at
+                    id, owner_id, content, category, source_type, source_id, enabled,
+                    scope, kb_id, expires_at, source_status, embedding_json, embedding_model,
+                    created_at, updated_at
                 ) VALUES (
-                    :id, :owner_id, :content, :category, :source_type, :source_id, :enabled, :created_at, :updated_at
+                    :id, :owner_id, :content, :category, :source_type, :source_id, :enabled,
+                    :scope, :kb_id, :expires_at, :source_status, :embedding_json, :embedding_model,
+                    :created_at, :updated_at
                 )
                 """,
                 row,
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self._public_memory(row)
 
     def get_memory(self, memory_id: str, owner_id: str) -> dict[str, Any] | None:
         row = self._one("SELECT * FROM memories WHERE id = ? AND owner_id = ?", (memory_id, owner_id))
         return self._public_memory(row) if row else None
 
-    def list_memories(self, owner_id: str) -> list[dict[str, Any]]:
-        rows = self._all(
-            "SELECT * FROM memories WHERE owner_id = ? ORDER BY updated_at DESC",
-            (owner_id,),
-        )
+    def list_memories(self, owner_id: str, kb_id: str | None = None) -> list[dict[str, Any]]:
+        if kb_id:
+            rows = self._all(
+                """SELECT * FROM memories
+                   WHERE owner_id = ? AND (scope = 'global' OR (scope = 'kb' AND kb_id = ?))
+                   ORDER BY updated_at DESC""",
+                (owner_id, kb_id),
+            )
+        else:
+            rows = self._all("SELECT * FROM memories WHERE owner_id = ? ORDER BY updated_at DESC", (owner_id,))
         return [self._public_memory(row) for row in rows]
 
     def enabled_memories(self, owner_id: str) -> list[dict[str, Any]]:
@@ -661,6 +811,61 @@ class AppStore:
         )
         return [self._public_memory(row) for row in rows]
 
+    def retrieve_memories(
+        self,
+        owner_id: str,
+        kb_id: str,
+        query: str,
+        top_k: int = 5,
+        token_budget: int = 1200,
+        *,
+        embedding: list[float] | None = None,
+        embedding_model: str = "",
+    ) -> list[dict[str, Any]]:
+        """召回当前用户的全局记忆和当前知识库记忆，不跨库泄漏。"""
+        now = _now()
+        rows = self._all(
+            """SELECT * FROM memories
+               WHERE owner_id = ? AND enabled = 1 AND source_status = 'active'
+                 AND (scope = 'global' OR (scope = 'kb' AND kb_id = ?))
+                 AND (expires_at = '' OR expires_at > ?)
+               ORDER BY updated_at DESC""",
+            (owner_id, kb_id, now),
+        )
+        query_terms = _memory_terms(query)
+        candidates: list[dict[str, Any]] = []
+        for row in rows:
+            item = self._public_memory(row)
+            terms = _memory_terms(item["content"])
+            keyword_score = _keyword_overlap(query_terms, terms)
+            vector_score = 0.0
+            stored_model = str(item.get("embedding_model") or "")
+            if embedding and (not embedding_model or not stored_model or stored_model == embedding_model):
+                vector_score = _cosine(embedding, item.get("embedding") or [])
+            score = (0.7 * vector_score) + (0.3 * keyword_score)
+            if not embedding:
+                score = keyword_score
+            # Memory is a secondary signal; require a minimum score so an unrelated
+            # global preference cannot enter every answer merely because it is enabled.
+            if score < 0.2:
+                continue
+            item["memory_score"] = round(float(score), 6)
+            item["retrieval_reason"] = "语义与关键词均相关" if vector_score and keyword_score else ("语义相关" if vector_score else "关键词命中")
+            candidates.append(item)
+        candidates.sort(key=lambda item: (float(item.get("memory_score") or 0), item.get("updated_at") or ""), reverse=True)
+        selected: list[dict[str, Any]] = []
+        used_tokens = 0
+        for item in candidates[: max(1, min(int(top_k or 5), 10))]:
+            tokens = _memory_token_count(item["content"])
+            if selected and used_tokens + tokens > max(1, int(token_budget or 1200)):
+                continue
+            if not selected and tokens > max(1, int(token_budget or 1200)):
+                item["content"] = item["content"][: max(1, int(token_budget or 1200)) * 2]
+                tokens = _memory_token_count(item["content"])
+            selected.append(item)
+            used_tokens += tokens
+        return selected
+
     def update_memory(
         self,
         memory_id: str,
@@ -669,6 +874,9 @@ class AppStore:
         content: str | None = None,
         category: str | None = None,
         enabled: bool | None = None,
+        scope: str | None = None,
+        kb_id: str | None = None,
+        expires_at: str | None = None,
     ) -> dict[str, Any] | None:
         current = self.get_memory(memory_id, owner_id)
         if current is None:
@@ -676,16 +884,21 @@ class AppStore:
         next_content = current["content"] if content is None else content.strip()
         next_category = current["category"] if category is None else category
         next_enabled = current["enabled"] if enabled is None else enabled
+        next_scope = current.get("scope") if scope is None else (scope if scope in {"global", "kb"} else current.get("scope"))
+        next_kb_id = current.get("kb_id") if kb_id is None else str(kb_id or "")
+        if next_scope == "global":
+            next_kb_id = ""
+        next_expires_at = current.get("expires_at") if expires_at is None else str(expires_at or "")
         with self._lock:
             self._conn.execute(
                 """
                 UPDATE memories
-                SET content = ?, category = ?, enabled = ?, updated_at = ?
+                SET content = ?, category = ?, enabled = ?, scope = ?, kb_id = ?, expires_at = ?, updated_at = ?
                 WHERE id = ? AND owner_id = ?
                 """,
-                (next_content, next_category, 1 if next_enabled else 0, _now(), memory_id, owner_id),
+                (next_content, next_category, 1 if next_enabled else 0, next_scope, next_kb_id, next_expires_at, _now(), memory_id, owner_id),
             )
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return self.get_memory(memory_id, owner_id)
 
     def delete_memory(self, memory_id: str, owner_id: str) -> bool:
@@ -694,16 +907,16 @@ class AppStore:
             return False
         with self._lock:
             self._conn.execute("DELETE FROM memories WHERE id = ? AND owner_id = ?", (memory_id, owner_id))
-            self._conn.commit()
+            _commit_with_retry(self._conn)
         return True
 
     def count_documents_untouched(self) -> None:
         return None
 
     def purge_kb(self, kb_id: str, owner_id: str | None = None) -> None:
-        """删除知识库时清理会话、消息、反馈和记忆候选。
+        """删除知识库时清理会话、消息、反馈和候选，并停用该库的记忆。
 
-        产品策略：个人记忆是用户级资料，不随知识库删除。用户需在记忆页自行关闭或删除。
+        global 记忆属于用户，不随知识库删除；kb 记忆标记为 deleted，避免成为孤儿上下文。
         """
         with self._lock:
             if owner_id:
@@ -712,13 +925,21 @@ class AppStore:
                 self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
                 self._conn.execute("DELETE FROM messages WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
                 self._conn.execute("DELETE FROM conversations WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
+                self._conn.execute(
+                    "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND owner_id = ? AND scope = 'kb'",
+                    (_now(), kb_id, owner_id),
+                )
             else:
                 self._conn.execute("DELETE FROM offline_eval_candidates WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM answer_feedback WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM messages WHERE kb_id = ?", (kb_id,))
                 self._conn.execute("DELETE FROM conversations WHERE kb_id = ?", (kb_id,))
-            self._conn.commit()
+                self._conn.execute(
+                    "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND scope = 'kb'",
+                    (_now(), kb_id),
+                )
+            _commit_with_retry(self._conn)
 
     def _one(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
         with self._lock:
@@ -817,6 +1038,10 @@ class AppStore:
 
     def _public_memory(self, row: Any) -> dict[str, Any]:
         data = dict(row)
+        try:
+            embedding = json.loads(data.get("embedding_json") or "[]")
+        except json.JSONDecodeError:
+            embedding = []
         return {
             "id": data["id"],
             "owner_id": data["owner_id"],
@@ -825,6 +1050,12 @@ class AppStore:
             "source_type": data.get("source_type") or "candidate",
             "source_id": data.get("source_id") or "",
             "enabled": bool(data.get("enabled")),
+            "scope": data.get("scope") or "global",
+            "kb_id": data.get("kb_id") or "",
+            "expires_at": data.get("expires_at") or "",
+            "source_status": data.get("source_status") or "active",
+            "embedding": embedding if isinstance(embedding, list) else [],
+            "embedding_model": data.get("embedding_model") or "",
             "created_at": data["created_at"],
             "updated_at": data["updated_at"],
         }

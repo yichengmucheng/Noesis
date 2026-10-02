@@ -147,7 +147,26 @@ lightrag.log                     # 运行日志
 ```
 
 迁移到新机器 = 拷贝整个 `LightRAG_test` 目录 + 一个能访问 SiliconFlow 的网络。
-备份知识库 = 备份 `rag_storage/` + `inputs/` 两个目录。
+备份知识库 = 备份 `rag_storage/` + `inputs/` 两个目录；同时必须备份
+`product_app.sqlite`（会话、消息、反馈和已确认个人记忆）。应用库启用 WAL，
+不要只复制正在运行中的 `-wal` / `-shm` 文件，使用 SQLite backup 命令生成一致性快照：
+
+```powershell
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage `
+  --backup backups/product_app-$(Get-Date -Format yyyyMMddHHmmss).sqlite
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage --check
+```
+
+恢复前停止 API 和 Worker，确认备份来自同一用户数据快照，然后执行：
+
+```powershell
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage `
+  --backup backups/product_app-20261002.sqlite --restore --check
+```
+
+恢复后重新启动服务，并检查会话、反馈、记忆和知识库归属。应用库当前支持单机
+SQLite + 一个 API 进程及一个 Worker 进程；多 API 进程部署前应迁移到 PostgreSQL，
+本阶段不自动引入 PostgreSQL。
 
 ## 8. 测试
 
@@ -241,7 +260,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-re
 
 修改 `.env` 后必须 `--force-recreate`。`docker restart` 不会重新读取环境变量。
 
-备份时复制 `data/rag_storage` 和 `data/originals`。密钥轮换时先在模型平台更换密钥，再写入 `.env` 并重建容器，不要把 `.env` 提交到仓库。刷新令牌放在 HttpOnly Cookie 中，访问令牌只留在浏览器内存。
+备份时复制 `data/rag_storage`、`data/originals`，并使用上面的 SQLite backup 命令保存
+`product_app.sqlite`。密钥轮换时先在模型平台更换密钥，再写入 `.env` 并重建容器，
+不要把 `.env` 提交到仓库。刷新令牌放在 HttpOnly Cookie 中，访问令牌只留在浏览器内存。
 
 ## 13. 任务队列
 

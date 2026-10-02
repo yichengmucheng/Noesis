@@ -381,6 +381,18 @@ def _public_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=text[:500] or "请求失败")
 
 
+async def _embedding_for(rag: Any, text: str) -> list[float]:
+    try:
+        values = await rag.embedding_func([text])
+        row = values[0] if values else []
+        if hasattr(row, "tolist"):
+            row = row.tolist()
+        return [float(value) for value in row]
+    except Exception as exc:
+        logger.warning("记忆向量生成失败，回退关键词召回: %s", exc)
+        return []
+
+
 def _citations_from_answer(answer: str) -> list[dict[str, Any]]:
     cites: list[dict[str, Any]] = []
     for raw in answer.splitlines():
@@ -572,6 +584,9 @@ class MemoryPatch(BaseModel):
     content: Optional[str] = None
     category: Optional[str] = None
     enabled: Optional[bool] = None
+    scope: Optional[str] = None
+    kb_id: Optional[str] = None
+    expires_at: Optional[str] = None
 
 
 class SearchBody(BaseModel):
@@ -1874,7 +1889,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def accept_memory_candidate(candidate_id: str, kb_id: str):
         data = await _read()
         _find_kb(data, kb_id)
-        item = _app().accept_memory_candidate(candidate_id, actor_id(), kb_id)
+        candidate = _app().get_memory_candidate(candidate_id, actor_id(), kb_id)
+        embedding = await _embedding_for(rag, str((candidate or {}).get("content") or "")) if candidate else []
+        item = _app().accept_memory_candidate(
+            candidate_id,
+            actor_id(),
+            kb_id,
+            embedding=embedding,
+            embedding_model=os.getenv("EMBEDDING_MODEL") or "",
+        )
         if item is None:
             raise HTTPException(status_code=404, detail="记忆候选不存在或已处理")
         return item
@@ -1889,17 +1912,30 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         return item
 
     @router.get("/memories")
-    async def list_memories():
-        return {"items": _app().list_memories(actor_id())}
+    async def list_memories(kb_id: str | None = None):
+        if kb_id:
+            data = await _read()
+            _find_kb(data, kb_id)
+        return {"items": _app().list_memories(actor_id(), kb_id)}
 
     @router.patch("/memories/{memory_id}")
     async def patch_memory(memory_id: str, body: MemoryPatch):
+        if body.scope is not None and body.scope not in {"global", "kb"}:
+            raise HTTPException(status_code=400, detail="记忆作用域只能是 global 或 kb")
+        if body.scope == "kb":
+            if not body.kb_id:
+                raise HTTPException(status_code=400, detail="知识库记忆必须提供 kb_id")
+            data = await _read()
+            _find_kb(data, body.kb_id)
         item = _app().update_memory(
             memory_id,
             actor_id(),
             content=body.content,
             category=body.category,
             enabled=body.enabled,
+            scope=body.scope,
+            kb_id=body.kb_id,
+            expires_at=body.expires_at,
         )
         if item is None:
             raise HTTPException(status_code=404, detail="记忆不存在")
@@ -2052,7 +2088,16 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             saved_assistant = True
             return row
 
-        memories = app.enabled_memories(user_id)
+        memory_embedding = await _embedding_for(rag, body.query.strip())
+        memories = app.retrieve_memories(
+            user_id,
+            body.kb_id,
+            body.query.strip(),
+            top_k=5,
+            token_budget=1200,
+            embedding=memory_embedding,
+            embedding_model=os.getenv("EMBEDDING_MODEL") or "",
+        )
         try:
             first = True
             async for event in stream_answer(
