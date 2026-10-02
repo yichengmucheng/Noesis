@@ -14,15 +14,15 @@ import { graphApi } from '../../api'
 const { Text, Title } = Typography
 const { TextArea } = Input
 
-// ─── 颜色映射（实体类型）────────────────────────────────────
-const TYPE_COLORS: Record<string, string> = {
-  设备: '#1677ff', 部件: '#13c2c2', 故障定义: '#ff4d4f',
-  一层原因: '#fa8c16', 二层原因: '#faad14', 三层原因: '#fadb14', 四层原因: '#d4b106',
-  问题点: '#eb2f96', 措施: '#52c41a', 验证试验: '#2f54eb',
-  文件: '#8c8c8c', 人员: '#722ed1', 部门: '#597ef7', 效果: '#a0d911',
-}
+const TYPE_PALETTE = ['#1677ff', '#13c2c2', '#fa8c16', '#52c41a', '#722ed1', '#eb2f96', '#2f54eb', '#faad14']
 
-const getColor = (type: string) => TYPE_COLORS[type] || '#8c8c8c'
+function getColor(type: string) {
+  const name = String(type || '')
+  if (!name) return '#8c8c8c'
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return TYPE_PALETTE[hash % TYPE_PALETTE.length]
+}
 
 function relationLabels(text: string) {
   const labels = String(text || '').split(/[；;，,、|]/).map(item => item.trim()).filter(Boolean)
@@ -43,11 +43,6 @@ function WrapText({ text, strong }: { text: string; strong?: boolean }) {
     </Tooltip>
   )
 }
-
-const FALLBACK_REL_TYPES = [
-  '发生于', '导致', '根本原因为', '属于', '采取措施', '验证于',
-  '记录于', '负责', '改进效果为', '影响', '连接', '加速',
-]
 
 // ─── 力导向图（SVG）─────────────────────────────────────────
 interface GraphNode { id: string; label: string; type: string; desc: string; frequency: number; x?: number; y?: number; vx?: number; vy?: number }
@@ -458,14 +453,21 @@ export default function GraphPage() {
                     <Button icon={<ReloadOutlined />} onClick={() => requestGraph()}>
                       显示全图
                     </Button>
-                    {/* 实体类型图例 */}
                     <Space wrap>
-                      {Object.entries(TYPE_COLORS).filter(([t]) => !t.includes('故障')).slice(0, 6).map(([t, c]) => (
-                        <Tag key={t} color={c} style={{ color: '#fff', cursor: 'pointer' }}
-                          onClick={() => { setEntityFilter(f => ({ ...f, type: t })); setActiveTab('entities') }}>
-                          {t}
-                        </Tag>
-                      ))}
+                      {typeDist.map((item: { type?: string }) => {
+                        const typeName = String(item.type || '').trim()
+                        if (!typeName) return null
+                        return (
+                          <Tag
+                            key={typeName}
+                            color={getColor(typeName)}
+                            style={{ color: '#fff', cursor: 'pointer' }}
+                            onClick={() => { setEntityFilter(f => ({ ...f, type: typeName, page: 1 })); setActiveTab('entities') }}
+                          >
+                            {typeName}
+                          </Tag>
+                        )
+                      })}
                     </Space>
                   </Space>
 
@@ -549,9 +551,10 @@ export default function GraphPage() {
                       allowClear
                       style={{ width: 140 }}
                       onChange={v => setEntityFilter(f => ({ ...f, type: v, page: 1 }))}
-                      options={[...new Set([...Object.keys(TYPE_COLORS),
-                        ...(typeDist.map((d: any) => d.type))
-                      ])].map(t => ({ label: t, value: t }))}
+                      options={typeDist.map((item: { type?: string }) => ({
+                        label: item.type,
+                        value: item.type,
+                      })).filter((item: { value?: string }) => item.value)}
                     />
                     <Button icon={<ReloadOutlined />} onClick={loadEntities}>刷新</Button>
                   </Space>
@@ -611,7 +614,7 @@ export default function GraphPage() {
                       style={{ width: 180 }}
                       value={relFilter.relType}
                       onChange={v => setRelFilter(f => ({ ...f, relType: v, page: 1 }))}
-                      options={[...new Set([...FALLBACK_REL_TYPES, ...relTypeOptions])].map(t => ({
+                      options={relTypeOptions.map(t => ({
                         label: t, value: t,
                       }))}
                     />
