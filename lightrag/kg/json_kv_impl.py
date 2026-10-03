@@ -22,6 +22,14 @@ from .shared_storage import (
 )
 
 
+def _file_signature(path: str) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 @final
 @dataclass
 class JsonKVStorage(BaseKVStorage):
@@ -43,6 +51,7 @@ class JsonKVStorage(BaseKVStorage):
         self._data = None
         self._storage_lock = None
         self.storage_updated = None
+        self._disk_signature = None
 
     async def initialize(self):
         """Initialize storage data"""
@@ -67,6 +76,24 @@ class JsonKVStorage(BaseKVStorage):
                     logger.info(
                         f"[{self.workspace}] Process {os.getpid()} KV load {self.namespace} with {data_count} records"
                     )
+            self._disk_signature = _file_signature(self._file_name)
+
+    async def _reload_external_changes(self) -> None:
+        """Reload file-backed data changed by a separately managed worker."""
+        signature = _file_signature(self._file_name)
+        if signature == self._disk_signature or self.storage_updated.value:
+            return
+        async with self._storage_lock:
+            signature = _file_signature(self._file_name)
+            if signature == self._disk_signature or self.storage_updated.value:
+                return
+            loaded_data = load_json(self._file_name) or {}
+            self._data.clear()
+            self._data.update(loaded_data)
+            self._disk_signature = signature
+            logger.info(
+                f"[{self.workspace}] Process {os.getpid()} reloaded KV {self.namespace} from an external update with {len(loaded_data)} records"
+            )
 
     async def index_done_callback(self) -> None:
         async with self._storage_lock:
@@ -82,6 +109,7 @@ class JsonKVStorage(BaseKVStorage):
                     f"[{self.workspace}] Process {os.getpid()} KV writting {data_count} records to {self.namespace}"
                 )
                 write_json(data_dict, self._file_name)
+                self._disk_signature = _file_signature(self._file_name)
                 await clear_all_update_flags(self.final_namespace)
 
     async def get_all(self) -> dict[str, Any]:
@@ -90,6 +118,7 @@ class JsonKVStorage(BaseKVStorage):
         Returns:
             Dictionary containing all stored data
         """
+        await self._reload_external_changes()
         async with self._storage_lock:
             result = {}
             for key, value in self._data.items():
@@ -105,6 +134,7 @@ class JsonKVStorage(BaseKVStorage):
             return result
 
     async def get_by_id(self, id: str) -> dict[str, Any] | None:
+        await self._reload_external_changes()
         async with self._storage_lock:
             result = self._data.get(id)
             if result:
@@ -118,6 +148,7 @@ class JsonKVStorage(BaseKVStorage):
             return result
 
     async def get_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        await self._reload_external_changes()
         async with self._storage_lock:
             results = []
             for id in ids:
@@ -136,6 +167,7 @@ class JsonKVStorage(BaseKVStorage):
             return results
 
     async def filter_keys(self, keys: set[str]) -> set[str]:
+        await self._reload_external_changes()
         async with self._storage_lock:
             return set(keys) - set(self._data.keys())
 

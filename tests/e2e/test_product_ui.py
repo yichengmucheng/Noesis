@@ -399,6 +399,43 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 "embedding_model": "Qwen/Qwen3-Embedding-4B",
             }, ensure_ascii=False))
 
+        voice_state = {"session": None, "turns": []}
+
+        def voice_sessions(route):
+            path = route.request.url.split("?")[0].rstrip("/")
+            if route.request.method == "POST" and path.endswith("/sessions"):
+                voice_state["session"] = {"id": "voice-1", "kb_id": "kb-1", "goal": "free", "status": "active"}
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(voice_state["session"]))
+                return
+            if route.request.method == "GET" and path.endswith("/sessions"):
+                session = voice_state["session"]
+                item = {
+                    **session,
+                    "turn_count": len(voice_state["turns"]),
+                    "completed_turn_count": len([turn for turn in voice_state["turns"] if turn.get("answer")]),
+                    "cited_turn_count": len([turn for turn in voice_state["turns"] if turn.get("citations")]),
+                    "first_transcript": voice_state["turns"][0]["transcript"] if voice_state["turns"] else "",
+                } if session else None
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [item] if item else []}, ensure_ascii=False))
+                return
+            if route.request.method == "GET":
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({**(voice_state["session"] or {}), "turns": voice_state["turns"]}))
+                return
+            route.fallback()
+
+        def voice_turn(route):
+            path = route.request.url.split("?")[0].rstrip("/")
+            if path.endswith("/turn"):
+                turn = {"id": "turn-1", "session_id": "voice-1", "kb_id": "kb-1", "transcript": "请复述重点", "answer": "重点是资料结论 [C1]", "citations": [{"citation_id": "C1", "doc_name": "笔记.txt", "excerpt": "资料结论"}], "memory_refs": []}
+                voice_state["turns"].append(turn)
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(turn, ensure_ascii=False))
+                return
+            if path.endswith("/finish"):
+                voice_state["session"]["status"] = "completed"
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(voice_state["session"], ensure_ascii=False))
+                return
+            route.fallback()
+
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(args=["--no-proxy-server"])
             context = browser.new_context(
@@ -406,6 +443,19 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 permissions=["clipboard-read", "clipboard-write"],
             )
             page = context.new_page()
+            page.add_init_script("""
+                (() => {
+                  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+                    getUserMedia: async () => ({ getTracks: () => [{ stop: () => {} }] })
+                  }})
+                  class FakeMediaRecorder {
+                    constructor() { this.state = 'inactive'; this.mimeType = 'audio/webm'; this.ondataavailable = null; this.onstop = null }
+                    start() { this.state = 'recording' }
+                    stop() { this.state = 'inactive'; if (this.ondataavailable) this.ondataavailable({ data: new Blob(['audio'], { type: 'audio/webm' }) }); if (this.onstop) this.onstop() }
+                  }
+                  window.MediaRecorder = FakeMediaRecorder
+                })()
+            """)
             page.route("**/api/v1/kb/**/jobs**", jobs)
             page.route("**/api/v1/jobs/**", jobs)
             page.route("**/api/v1/kb/purge-jobs/**", checks)
@@ -425,6 +475,10 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.route(re.compile(r"/api/v1/memory-candidates/.+/reject"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
             page.route(re.compile(r"/api/v1/memories$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [{"id": "mem-1", "content": "偏好简洁", "enabled": True, "category": "preference"}]}, ensure_ascii=False)))
             page.route(re.compile(r"/api/v1/memories/.+"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
+            page.route(re.compile(r"/api/v1/voice/practice/sessions(?:/[^/?]+)?(?:\?.*)?$"), voice_sessions)
+            page.route(re.compile(r"/api/v1/voice/practice/.+/(turn|finish)$"), voice_turn)
+            page.route("**/api/v1/voice/transcribe", lambda route: route.fulfill(status=200, content_type="application/json", body='{"text":"请复述重点"}'))
+            page.route("**/api/v1/voice/speech", lambda route: route.fulfill(status=200, content_type="audio/mpeg", body=b"fake-audio"))
             page.goto(f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded")
             page.get_by_test_id("auth-switch").click()
             page.get_by_test_id("email").fill("ui.browser@example.com")
@@ -438,7 +492,32 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.locator(".ant-card", has_text="个人资料").click()
             page.wait_for_url("**/documents")
             page.get_by_role("heading", name="资料").wait_for()
-            assert page.get_by_text("练习").count() == 0
+            page.get_by_test_id("nav-voice").wait_for()
+            page.get_by_test_id("nav-voice").click()
+            page.get_by_test_id("voice-practice-page").wait_for()
+            page.get_by_test_id("voice-start").click()
+            page.get_by_test_id("voice-session").wait_for()
+            page.get_by_test_id("voice-record").click()
+            page.get_by_test_id("voice-stop").click()
+            page.get_by_test_id("voice-transcript").wait_for()
+            page.get_by_test_id("voice-transcript").fill("请复述重点")
+            page.get_by_test_id("voice-submit").click()
+            page.get_by_text("重点是资料结论").wait_for()
+            page.get_by_test_id("voice-play").click()
+            page.get_by_test_id("voice-finish").click()
+            page.get_by_text("练习已保存").wait_for()
+            page.set_viewport_size({"width": 390, "height": 844})
+            with page.expect_response(lambda response: "/voice/practice/sessions/voice-1" in response.url) as history_detail:
+                page.get_by_test_id("voice-history-open").click()
+            assert history_detail.value.status == 200
+            page.get_by_test_id("voice-review-drawer").wait_for()
+            page.get_by_text("完整对话").wait_for()
+            page.get_by_text("重点是资料结论").last.wait_for()
+            page.get_by_text("有来源回答").wait_for()
+            assert page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
+            page.set_viewport_size({"width": 1280, "height": 800})
+            page.get_by_test_id("nav-documents").click()
             page.get_by_test_id("nav-documents").wait_for()
             page.get_by_test_id("nav-chat").wait_for()
             page.get_by_test_id("nav-advanced").click()

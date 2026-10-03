@@ -124,6 +124,7 @@ def build_messages(
     expand_context: bool = True,
     detail: str = "standard",
     memories: list[dict[str, Any]] | None = None,
+    structured_output: bool = True,
 ) -> tuple[str, str]:
     """系统提示保持固定。摘要只放在用户消息里，并声明不是指令。"""
     lines = []
@@ -175,11 +176,17 @@ def build_messages(
     lines.append(DETAIL_HINT[level])
     lines.append("图谱路径只用于整理证据，不能代替原文。没有足够原文且没有可用个人记忆时回答：当前资料中没有找到足够依据。")
     lines.append("回答中明确写出哪些来自资料、哪些来自个人记忆。资料与记忆冲突时优先展示资料并提示记忆可能过期。")
-    lines.append(
-        '只输出 JSON：{"answer":"正文，资料用 [C1]，个人记忆用 [M1]","citations":["C1"],'
-        '"memory_refs":["M1"],"memory_candidates":[{"content":"可确认的长期偏好","category":"preference"}],'
-        '"unsupported_claims":[],"answerable":true}'
-    )
+    if structured_output:
+        lines.append(
+            '只输出 JSON：{"answer":"正文，资料用 [C1]，个人记忆用 [M1]","citations":["C1"],'
+            '"memory_refs":["M1"],"memory_candidates":[{"content":"可确认的长期偏好","category":"preference"}],'
+            '"unsupported_claims":[],"answerable":true}'
+        )
+    else:
+        lines.append(
+            "只输出回答正文，不要输出 JSON、标题或思考过程。可以边生成边返回。"
+            "严格使用已给出的 [C编号] 和 [M编号]，不要编造引用。"
+        )
     return SYSTEM_PROMPT, "\n".join(lines)
 
 
@@ -601,6 +608,7 @@ async def stream_answer(
     live_versions: dict[str, str] | None = None,
     prepared: dict[str, Any] | None = None,
     memories: list[dict[str, Any]] | None = None,
+    live_stream: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     from pathlib import Path
 
@@ -725,14 +733,35 @@ async def stream_answer(
         return
 
     _system, user_prompt = build_messages(
-        rewritten, citations, recent, summary, older, expand_context=expand_context, detail=level, memories=confirmed_memories
+        rewritten,
+        citations,
+        recent,
+        summary,
+        older,
+        expand_context=expand_context,
+        detail=level,
+        memories=confirmed_memories,
+        structured_output=not live_stream,
     )
-    generated = await rag.llm_model_func(user_prompt, system_prompt=SYSTEM_PROMPT, stream=False)
-    if hasattr(generated, "__aiter__"):
-        pieces: list[str] = []
-        async for piece in generated:
-            pieces.append(str(piece or ""))
-        generated = "".join(pieces)
+    streamed_generation = False
+    if live_stream:
+        generated = await rag.llm_model_func(user_prompt, system_prompt=SYSTEM_PROMPT, stream=True)
+        if hasattr(generated, "__aiter__"):
+            streamed_generation = True
+            pieces = []
+            async for piece in generated:
+                text = str(piece or "")
+                if text:
+                    pieces.append(text)
+                    yield {"type": "token", "text": text, "draft": True}
+            generated = "".join(pieces)
+    else:
+        generated = await rag.llm_model_func(user_prompt, system_prompt=SYSTEM_PROMPT, stream=False)
+        if hasattr(generated, "__aiter__"):
+            pieces: list[str] = []
+            async for piece in generated:
+                pieces.append(str(piece or ""))
+            generated = "".join(pieces)
     payload = parse_model_payload(str(generated or ""))
     used_memories: list[dict[str, Any]] = []
     candidates = payload["memory_candidates"]
@@ -772,8 +801,9 @@ async def stream_answer(
             answerable_final = False
             candidates = []
             unsupported = [payload["answer"]] if payload["answer"] else []
-    for start in range(0, len(answer), 24):
-        yield {"type": "token", "text": answer[start : start + 24]}
+    if not streamed_generation:
+        for start in range(0, len(answer), 24):
+            yield {"type": "token", "text": answer[start : start + 24]}
     yield {
         "type": "done",
         "answer": answer,

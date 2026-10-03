@@ -12,6 +12,7 @@ import AuditPage from './pages/Audit'
 import GraphPage from './pages/Graph'
 import ChatPage from './pages/Chat'
 import MemoryPage from './pages/Memory'
+import VoicePracticePage from './pages/VoicePractice'
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '')
 
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="graph"      element={<GraphPage />} />
           <Route path="chat"       element={<ChatPage />} />
           <Route path="memory"     element={<MemoryPage />} />
+          <Route path="voice"      element={<VoicePracticePage />} />
         </Route>
       </Routes>
       </AuthGate>

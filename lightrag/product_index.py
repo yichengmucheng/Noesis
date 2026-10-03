@@ -323,7 +323,19 @@ async def _configured_embed(texts: list[str]):
         return await ollama_embed(texts, embed_model=model or "bge-m3", host=host or "http://localhost:11434", api_key=api_key or None)
     from lightrag.llm.openai import openai_embed
 
-    return await openai_embed(texts, model=model or "text-embedding-3-small", base_url=host or None, api_key=api_key or None)
+    try:
+        configured_dimension = int(os.getenv("EMBEDDING_DIM", "0") or 0)
+    except ValueError:
+        configured_dimension = 0
+    selected_model = model or "text-embedding-3-small"
+    dimensions = configured_dimension if configured_dimension > 0 and "qwen" in selected_model.lower() else None
+    return await openai_embed(
+        texts,
+        model=selected_model,
+        base_url=host or None,
+        api_key=api_key or None,
+        dimensions=dimensions,
+    )
 
 
 async def _configured_llm(prompt, system_prompt=None, history_messages=None, **kwargs):

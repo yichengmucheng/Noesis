@@ -21,6 +21,14 @@ from .shared_storage import (
 )
 
 
+def _file_signature(path: str) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 @final
 @dataclass
 class NanoVectorDBStorage(BaseVectorStorage):
@@ -61,6 +69,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self.embedding_func.embedding_dim,
             storage_file=self._client_file_name,
         )
+        self._disk_signature = _file_signature(self._client_file_name)
 
     async def initialize(self):
         """Initialize storage data"""
@@ -74,7 +83,8 @@ class NanoVectorDBStorage(BaseVectorStorage):
         # Acquire lock to prevent concurrent read and write
         async with self._storage_lock:
             # Check if data needs to be reloaded
-            if self.storage_updated.value:
+            signature = _file_signature(self._client_file_name)
+            if self.storage_updated.value or signature != self._disk_signature:
                 logger.info(
                     f"[{self.workspace}] Process {os.getpid()} reloading {self.namespace} due to update by another process"
                 )
@@ -83,6 +93,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
                     self.embedding_func.embedding_dim,
                     storage_file=self._client_file_name,
                 )
+                self._disk_signature = signature
                 # Reset update flag
                 self.storage_updated.value = False
 
@@ -276,6 +287,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
                     self.embedding_func.embedding_dim,
                     storage_file=self._client_file_name,
                 )
+                self._disk_signature = _file_signature(self._client_file_name)
                 # Reset update flag
                 self.storage_updated.value = False
                 return False  # Return error
@@ -285,6 +297,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             try:
                 # Save data to disk
                 self._client.save()
+                self._disk_signature = _file_signature(self._client_file_name)
                 # Notify other processes that data has been updated
                 await set_all_update_flags(self.final_namespace)
                 # Reset own update flag to avoid self-reloading
@@ -395,6 +408,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
                     self.embedding_func.embedding_dim,
                     storage_file=self._client_file_name,
                 )
+                self._disk_signature = _file_signature(self._client_file_name)
 
                 # Notify other processes that data has been updated
                 await set_all_update_flags(self.final_namespace)

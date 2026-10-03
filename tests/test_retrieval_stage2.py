@@ -20,6 +20,34 @@ from lightrag.retrieval_orchestrator import (
 )
 from lightrag.search_runtime import _rerank, run_search_test
 from lightrag.search_strategies import filter_by_threshold
+from lightrag.utils import apply_rerank_if_enabled, calculate_time_weight
+
+
+def test_rerank_accepts_missing_and_iso_created_at():
+    async def rerank_func(**_kwargs):
+        return [
+            {"index": 0, "relevance_score": 0.8},
+            {"index": 1, "relevance_score": 0.4},
+        ]
+
+    docs = [
+        {"content": "legacy", "created_at": None},
+        {"content": "dated", "created_at": "2026-01-01T00:00:00+08:00"},
+    ]
+    ranked = asyncio.run(
+        apply_rerank_if_enabled(
+            "query",
+            docs,
+            {"rerank_model_func": rerank_func},
+            enable_rerank=True,
+            top_n=2,
+        )
+    )
+
+    assert [item["content"] for item in ranked] == ["legacy", "dated"]
+    assert ranked[0]["rerank_score"] == 0.8
+    assert calculate_time_weight(None) == 1.0
+    assert 0.1 <= calculate_time_weight("2026-01-01T00:00:00+08:00") <= 1.0
 
 
 def test_query_routes_do_not_call_model_for_exact_or_factual():

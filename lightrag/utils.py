@@ -2280,7 +2280,7 @@ class TokenTracker:
             f"Total tokens: {usage['total_tokens']}"
         )
 
-def calculate_time_weight(created_at: float, now: float = None, half_life_days: float = 90) -> float:
+def calculate_time_weight(created_at: Any, now: float = None, half_life_days: float = 90) -> float:
     """
     计算版本时间权重：时间戳越早（旧版本），权重越低。
     - created_at: 知识创建的Unix时间戳。
@@ -2289,6 +2289,26 @@ def calculate_time_weight(created_at: float, now: float = None, half_life_days: 
     """
     if now is None:
         now = datetime.now().timestamp()
+
+    # Product chunks created before timestamp tracking may contain None or an
+    # empty value. Missing metadata must not make reranking fail or silently
+    # penalize otherwise relevant legacy documents.
+    if created_at is None or created_at == "":
+        return 1.0
+    if isinstance(created_at, datetime):
+        created_at = created_at.timestamp()
+    elif isinstance(created_at, str):
+        try:
+            created_at = float(created_at)
+        except ValueError:
+            try:
+                created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return 1.0
+    try:
+        created_at = float(created_at)
+    except (TypeError, ValueError):
+        return 1.0
     
     # 如果 created_at 为 0 或极旧，给予最低权重
     if created_at <= 1e9:  # 大约是2001年之前

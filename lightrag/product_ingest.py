@@ -11,6 +11,7 @@ import hashlib
 import os
 import threading
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -20,6 +21,7 @@ from lightrag.product_document_ir import public_location
 from lightrag.product_ids import chunk_record
 from lightrag.product_index import embed_texts, extract_and_store, write_chunk_vectors
 from lightrag.product_parse import ParseError, chunks_from_document, parse_bytes, plain_text, save_ir
+from lightrag.utils import logger
 from lightrag.product_storage import (
     CommitGate,
     bind_commit_gate,
@@ -51,6 +53,24 @@ class StageError(RuntimeError):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_internal_error(stage: str, exc: Exception) -> str:
+    message = str(exc).strip()
+    for name in (
+        "EMBEDDING_BINDING_API_KEY",
+        "LLM_BINDING_API_KEY",
+        "RERANK_BINDING_API_KEY",
+        "ALIYUN_ACCESS_KEY_ID",
+        "ALIYUN_ACCESS_KEY_SECRET",
+    ):
+        secret = os.getenv(name, "").strip()
+        if secret:
+            message = message.replace(secret, "***")
+    detail = f"{stage} 阶段 {type(exc).__name__}"
+    if message:
+        detail += f"：{message[:180]}"
+    return detail
 
 
 def reset_stage_failures() -> None:
@@ -359,7 +379,10 @@ def run_ingestion(store: Any, job: dict[str, Any], working: Path, inputs: Path, 
                     _maybe_fail(stage)
                     size = int(snapshot.get("chunk_size") or 512)
                     overlap = int(snapshot.get("chunk_overlap") or 0)
-                    if parsed is not None and size >= 180:
+                    strategy = str(snapshot.get("strategy") or "smart").strip().lower()
+                    if strategy == "one":
+                        made = [chunk_record(owner_id, kb_id, doc_id, 1, text.strip())] if text.strip() else []
+                    elif parsed is not None and size >= 180:
                         made = chunks_from_document(parsed, owner_id, kb_id, doc_id, chunk_size=250, chunk_overlap=45)
                     elif parsed is not None:
                         made = chunks_from_document(parsed, owner_id, kb_id, doc_id, chunk_size=size, chunk_overlap=overlap)
@@ -399,6 +422,10 @@ def run_ingestion(store: Any, job: dict[str, Any], working: Path, inputs: Path, 
                 def graph() -> None:
                     _pause(stage)
                     _maybe_fail(stage)
+                    current = load_shell(working)
+                    kb = next((item for item in current.get("kbs") or [] if item.get("id") == kb_id), {})
+                    if not bool((kb.get("settings") or {}).get("graph_enabled", True)):
+                        return
                     _write_graph(working, doc_id, kb_id, owner_id, text, chunks, str(job.get("file_path") or ""))
 
                 _run_bounded(stage, graph)
@@ -458,7 +485,11 @@ def run_ingestion(store: Any, job: dict[str, Any], working: Path, inputs: Path, 
             status = "timeout" if "超时" in str(exc) else "failed"
             return _fail(store, working, inputs, job, exc.code, str(exc), status)
         except Exception as exc:
-            return _fail(store, working, inputs, job, "internal", "内部处理失败", "failed")
+            detail = _safe_internal_error(stage, exc)
+            frames = traceback.extract_tb(exc.__traceback__)
+            location = f"{frames[-1].filename}:{frames[-1].lineno}" if frames else "unknown"
+            logger.error("入库任务失败 job=%s location=%s detail=%s", job.get("job_id"), location, detail)
+            return _fail(store, working, inputs, job, "internal", detail, "failed")
     return store.get_job(job["job_id"]) or job
 
 

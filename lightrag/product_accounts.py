@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import codecs
 import io
 import logging
 import os
@@ -224,7 +225,7 @@ def content_matches_extension(name: str, head: bytes) -> bool:
         if b"\x00" in sample:
             return False
         try:
-            sample.decode("utf-8")
+            codecs.getincrementaldecoder("utf-8")().decode(sample, final=False)
         except UnicodeDecodeError:
             return False
     return True

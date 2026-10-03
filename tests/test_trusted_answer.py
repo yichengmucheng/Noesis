@@ -17,6 +17,7 @@ from lightrag.answer_pipeline import (
     build_messages,
     cache_entry_usable,
     normalize_detail,
+    rewrite_query,
     stream_answer,
     validate_citations,
 )
@@ -82,6 +83,30 @@ def test_detail_levels_change_prompt_budget_not_system_rules():
     assert "600字以内" in prompts["detailed"]
     assert "关键解释" in prompts["standard"]
     assert "分点" in prompts["detailed"]
+
+
+@pytest.mark.asyncio
+async def test_follow_up_pronoun_is_rewritten_with_conversation_context():
+    class Rag:
+        async def llm_model_func(self, prompt, **_kwargs):
+            assert "Maas百事通" in prompt
+            assert "它主要使用了哪些技术" in prompt
+            return json.dumps({
+                "rewrite": "Maas百事通项目主要使用了哪些技术？",
+                "expansions": ["Maas百事通技术架构", "Maas百事通用了什么组件"],
+            }, ensure_ascii=False)
+
+    rewritten, expansions = await rewrite_query(
+        Rag(),
+        "它主要使用了哪些技术？",
+        [
+            {"role": "user", "content": "Maas百事通这个项目是怎么做的？"},
+            {"role": "assistant", "content": "这是一个企业级 AI 办公 Agent。"},
+        ],
+    )
+
+    assert rewritten == "Maas百事通项目主要使用了哪些技术？"
+    assert len(expansions) == 2
     assert normalize_detail("brief") == "concise"
     assert normalize_detail("normal") == "standard"
 

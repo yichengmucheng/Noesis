@@ -3,6 +3,7 @@ import type {
   DeepCheckReport, DeviceSession, DocumentSource, IndexStatus, JobPage, KbSettings, SourceContent,
   KnowledgeBase, ProductCapabilities, ProductJob, PurgeJob, SearchResponse,
   ConversationItem, StoredMessage, MemoryCandidate, MemoryItem,
+  VoicePracticeSession, VoicePracticeTurn,
 } from '../types'
 
 localStorage.removeItem('kb-refresh')
@@ -19,6 +20,12 @@ let refreshPromise: Promise<boolean> | null = null
 
 export function authHeader(): Record<string, string> {
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+}
+
+export function realtimeVoiceSocketUrl(): { url: string; protocols: string[] } {
+  const base = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+  const url = `${base}/api/v1/voice/realtime`
+  return accessToken ? { url, protocols: [`kb-access.${accessToken}`] } : { url, protocols: [] }
 }
 
 export function isLoggedIn() {
@@ -244,8 +251,8 @@ export const graphApi = {
   }) =>
     http.get<any, any>('/graph/entities', { params: { kb_id: kbId, ...params } }),
 
-  getEntityNeighbors: (kbId: string, entityName: string, hops = 2) =>
-    http.get<any, any>(`/graph/entities/${encodeURIComponent(entityName)}/neighbors`, {
+  getEntityNeighbors: (kbId: string, entityId: string, hops = 2) =>
+    http.get<any, any>(`/graph/entities/${encodeURIComponent(entityId)}/neighbors`, {
       params: { kb_id: kbId, hops },
     }),
 
@@ -254,9 +261,15 @@ export const graphApi = {
   }) =>
     http.get<any, any>('/graph/relations', { params: { kb_id: kbId, ...params } }),
 
-  getSubgraph: (kbId: string, entityName?: string, hops = 2, limit = 100) =>
+  getSubgraph: (kbId: string, focus?: { entityId?: string; entityName?: string }, hops = 2, limit = 24) =>
     http.get<any, any>('/graph/subgraph', {
-      params: { kb_id: kbId, entity_name: entityName, hops, limit },
+      params: {
+        kb_id: kbId,
+        entity_id: focus?.entityId,
+        entity_name: focus?.entityName,
+        hops,
+        limit,
+      },
     }),
 
   getConfig: (kbId: string) =>
@@ -319,8 +332,25 @@ export const memoryApi = {
     http.post<any, MemoryItem>(`/memory-candidates/${id}/accept`, {}, { params: { kb_id: kbId } }),
   reject: (id: string, kbId: string) =>
     http.post<any, MemoryCandidate>(`/memory-candidates/${id}/reject`, {}, { params: { kb_id: kbId } }),
-  list: () => http.get<any, { items: MemoryItem[] }>('/memories'),
-  patch: (id: string, data: { content?: string; category?: string; enabled?: boolean }) =>
+  list: (kbId?: string) => http.get<any, { items: MemoryItem[] }>('/memories', { params: kbId ? { kb_id: kbId } : {} }),
+  patch: (id: string, data: { content?: string; category?: string; enabled?: boolean; scope?: string; kb_id?: string; expires_at?: string }) =>
     http.patch<any, MemoryItem>(`/memories/${id}`, data),
   remove: (id: string) => http.delete<any, { ok: boolean }>(`/memories/${id}`),
+}
+
+export const voiceApi = {
+  createSession: (data: { kb_id: string; goal: string }) =>
+    http.post<any, VoicePracticeSession>('/voice/practice/sessions', data),
+  listSessions: (kbId: string) =>
+    http.get<any, { items: VoicePracticeSession[] }>('/voice/practice/sessions', { params: { kb_id: kbId } }),
+  getSession: (sessionId: string, kbId: string) =>
+    http.get<any, VoicePracticeSession>(`/voice/practice/sessions/${sessionId}`, { params: { kb_id: kbId } }),
+  transcribe: (formData: FormData) =>
+    http.post<any, { text: string }>('/voice/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  turn: (sessionId: string, data: { kb_id: string; transcript: string }) =>
+    http.post<any, VoicePracticeTurn & { answer?: string; memories?: VoicePracticeTurn['memory_refs'] }>(`/voice/practice/${sessionId}/turn`, data),
+  speech: (turnId: string, kbId: string) =>
+    http.post<any, Blob>('/voice/speech', { turn_id: turnId, kb_id: kbId }, { responseType: 'blob' }),
+  finish: (sessionId: string, data: { kb_id: string; summary?: string }) =>
+    http.post<any, VoicePracticeSession>(`/voice/practice/${sessionId}/finish`, data),
 }

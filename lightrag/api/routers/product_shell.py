@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import difflib
 import json
 import os
@@ -18,8 +19,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response, StreamingResponse
+from starlette.websockets import WebSocketState
 from pydantic import BaseModel, Field
 
 from lightrag.base import QueryParam
@@ -113,13 +115,35 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _voice_local_intent(text: str) -> tuple[str, str] | None:
+    """Handle short conversational controls before knowledge retrieval."""
+    normalized = re.sub(r"[\s,，。.!！?？、]+", "", str(text or "")).lower()
+    finish_phrases = {
+        "结束", "结束吧", "结束对话", "结束通话", "停止", "停止吧", "退出",
+        "再见", "拜拜", "不聊了", "先这样", "就这样", "就到这里",
+        "今天先到这里", "ok结束吧", "okay结束吧", "好的结束吧", "好了结束吧",
+    }
+    if normalized in finish_phrases:
+        return "finish", "好的，那我们先聊到这里。需要的时候再找我。"
+    if normalized in {"谢谢", "谢谢你", "多谢"}:
+        return "ack", "不客气，你可以继续问我。"
+    if normalized in {"ok", "okay", "好", "好的", "明白了", "知道了", "可以了"}:
+        return "ack", "好，你可以继续说。"
+    return None
+
+
+def _voice_thinking_ack(text: str) -> str:
+    options = ("好，我查一下。", "明白，我看看相关资料。", "好的，稍等一下。")
+    return options[sum(ord(char) for char in str(text or "")) % len(options)]
+
+
 def _default_settings() -> dict[str, Any]:
     return {
         "retrieval_mode": "mix",
         "top_k": 10,
         "similarity_ratio": 0.5,
         "similarity_threshold": 0.2,
-        "rerank_enabled": False,
+        "rerank_enabled": True,
         "graph_enabled": True,
         "context_expand": False,
         "ignore_whitespace": True,
@@ -381,6 +405,18 @@ def _public_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=text[:500] or "请求失败")
 
 
+async def _embedding_for(rag: Any, text: str) -> list[float]:
+    try:
+        values = await rag.embedding_func([text])
+        row = values[0] if len(values) else []
+        if hasattr(row, "tolist"):
+            row = row.tolist()
+        return [float(value) for value in row]
+    except Exception as exc:
+        logger.warning("记忆向量生成失败，回退关键词召回: %s", exc)
+        return []
+
+
 def _citations_from_answer(answer: str) -> list[dict[str, Any]]:
     cites: list[dict[str, Any]] = []
     for raw in answer.splitlines():
@@ -485,16 +521,60 @@ def _public_doc(row: dict[str, Any], input_dir: Path) -> dict[str, Any]:
     }
 
 
-def _node_view(node_id: str, props: dict[str, Any], degree: int = 1) -> dict[str, Any]:
+def _entity_display_name(node_id: str, props: dict[str, Any]) -> str:
+    name = _clean_text(props.get("name") or props.get("entity_name"), 120).strip()
+    if name:
+        return name
+    # Legacy graphs used the entity name as the node key. New graphs use an
+    # opaque ent-* key and keep the user-facing name in node properties.
+    if node_id and not re.match(r"^ent-[0-9a-f]+$", node_id, re.IGNORECASE):
+        return _clean_text(node_id, 120)
+    return "未命名实体"
+
+
+def _graph_document_refs(
+    props: dict[str, Any],
+    data: dict[str, Any],
+    kb_id: str,
+    bindings: dict[str, str],
+) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    seen: set[str] = set()
+    index = data.get("doc_index") or {}
+    for doc_id in str(props.get("doc_id") or "").split("<SEP>"):
+        doc_id = doc_id.strip()
+        row = index.get(doc_id)
+        if not doc_id or doc_id in seen or not isinstance(row, dict):
+            continue
+        if row.get("kb_id") != kb_id or row.get("deleted_at"):
+            continue
+        seen.add(doc_id)
+        refs.append({"document_id": doc_id, "name": str(row.get("display_name") or "资料")})
+    for name in _kb_filenames(props.get("file_path"), kb_id, bindings):
+        key = f"file:{name}"
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append({"document_id": "", "name": name})
+    return refs
+
+
+def _node_view(
+    node_id: str,
+    props: dict[str, Any],
+    degree: int = 1,
+    documents: Optional[list[dict[str, str]]] = None,
+) -> dict[str, Any]:
     entity_type = props.get("entity_type") or "未知"
     if isinstance(entity_type, list):
         entity_type = entity_type[0] if entity_type else "未知"
     return {
         "id": node_id,
-        "label": node_id,
+        "label": _entity_display_name(node_id, props),
         "type": str(entity_type),
         "desc": _clean_text(props.get("description"), 160),
         "frequency": max(int(degree or 1), 1),
+        "documents": documents or [],
     }
 
 
@@ -539,6 +619,7 @@ class ChatBody(BaseModel):
     session_id: Optional[str] = None
     conversation_id: Optional[str] = None
     answer_detail: Optional[str] = None
+    voice_stream: bool = False
 
 
 class ConversationCreate(BaseModel):
@@ -572,6 +653,30 @@ class MemoryPatch(BaseModel):
     content: Optional[str] = None
     category: Optional[str] = None
     enabled: Optional[bool] = None
+    scope: Optional[str] = None
+    kb_id: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class VoiceSessionCreate(BaseModel):
+    kb_id: str
+    goal: str = "free"
+
+
+class VoiceTurnBody(BaseModel):
+    transcript: str
+    kb_id: Optional[str] = None
+
+
+class VoiceFinishBody(BaseModel):
+    summary: Optional[str] = None
+    kb_id: Optional[str] = None
+
+
+class VoiceSpeechBody(BaseModel):
+    turn_id: str
+    voice: Optional[str] = None
+    kb_id: Optional[str] = None
 
 
 class SearchBody(BaseModel):
@@ -649,7 +754,12 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             return "新会话"
         return text[:32] + ("…" if len(text) > 32 else "")
 
-    async def _bind_user(request: Request, authorization: str | None = Header(default=None)):
+    async def _bind_user(request: Request = None, authorization: str | None = Header(default=None)):
+        # WebSocket routes do not receive an HTTP Request object. Their own
+        # handler performs token validation from headers/query/subprotocol.
+        if request is None:
+            yield
+            return
         path = request.url.path.rstrip("/")
         if path in {
             "/api/v1/auth/register",
@@ -1874,7 +1984,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def accept_memory_candidate(candidate_id: str, kb_id: str):
         data = await _read()
         _find_kb(data, kb_id)
-        item = _app().accept_memory_candidate(candidate_id, actor_id(), kb_id)
+        candidate = _app().get_memory_candidate(candidate_id, actor_id(), kb_id)
+        embedding = await _embedding_for(rag, str((candidate or {}).get("content") or "")) if candidate else []
+        item = _app().accept_memory_candidate(
+            candidate_id,
+            actor_id(),
+            kb_id,
+            embedding=embedding,
+            embedding_model=os.getenv("EMBEDDING_MODEL") or "",
+        )
         if item is None:
             raise HTTPException(status_code=404, detail="记忆候选不存在或已处理")
         return item
@@ -1889,17 +2007,30 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         return item
 
     @router.get("/memories")
-    async def list_memories():
-        return {"items": _app().list_memories(actor_id())}
+    async def list_memories(kb_id: str | None = None):
+        if kb_id:
+            data = await _read()
+            _find_kb(data, kb_id)
+        return {"items": _app().list_memories(actor_id(), kb_id)}
 
     @router.patch("/memories/{memory_id}")
     async def patch_memory(memory_id: str, body: MemoryPatch):
+        if body.scope is not None and body.scope not in {"global", "kb"}:
+            raise HTTPException(status_code=400, detail="记忆作用域只能是 global 或 kb")
+        if body.scope == "kb":
+            if not body.kb_id:
+                raise HTTPException(status_code=400, detail="知识库记忆必须提供 kb_id")
+            data = await _read()
+            _find_kb(data, body.kb_id)
         item = _app().update_memory(
             memory_id,
             actor_id(),
             content=body.content,
             category=body.category,
             enabled=body.enabled,
+            scope=body.scope,
+            kb_id=body.kb_id,
+            expires_at=body.expires_at,
         )
         if item is None:
             raise HTTPException(status_code=404, detail="记忆不存在")
@@ -1910,6 +2041,571 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         if not _app().delete_memory(memory_id, actor_id()):
             raise HTTPException(status_code=404, detail="记忆不存在")
         return {"ok": True}
+
+    def _voice_http_error(exc: Exception) -> HTTPException:
+        from lightrag.product_voice import VoiceProviderError
+
+        if isinstance(exc, VoiceProviderError):
+            return HTTPException(status_code=exc.status_code, detail=str(exc))
+        return HTTPException(status_code=503, detail="语音服务暂时不可用")
+
+    @router.post("/voice/practice/sessions")
+    async def create_voice_practice_session(body: VoiceSessionCreate):
+        data = await _read()
+        _find_kb(data, body.kb_id)
+        user_id = actor_id()
+        app = _app()
+        conversation = app.create_conversation(user_id, body.kb_id, "语音练习")
+        return app.create_voice_practice_session(
+            user_id,
+            body.kb_id,
+            goal=body.goal,
+            conversation_id=conversation["id"],
+        )
+
+    @router.get("/voice/practice/sessions")
+    async def list_voice_practice_sessions(kb_id: str, limit: int = 30):
+        data = await _read()
+        _find_kb(data, kb_id)
+        return {"items": _app().list_voice_practice_sessions(actor_id(), kb_id, limit=limit)}
+
+    @router.get("/voice/practice/sessions/{session_id}")
+    async def get_voice_practice_session(session_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        app = _app()
+        session = app.get_voice_practice_session(session_id, actor_id(), kb_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        session["turns"] = app.list_voice_practice_turns(session_id, actor_id(), kb_id)
+        return session
+
+    @router.post("/voice/transcribe")
+    async def transcribe_voice(file: UploadFile = File(...)):
+        from lightrag.product_voice import transcribe_audio
+
+        try:
+            audio = await file.read()
+            text = await transcribe_audio(audio, file.filename or "recording.webm", file.content_type or "")
+            return {"text": text}
+        except Exception as exc:
+            raise _voice_http_error(exc) from exc
+
+    @router.post("/voice/practice/{session_id}/turn")
+    async def voice_practice_turn(session_id: str, body: VoiceTurnBody):
+        transcript = (body.transcript or "").strip()
+        if not transcript:
+            raise HTTPException(status_code=400, detail="请先确认转写文本")
+        data = await _read()
+        session = _app().get_voice_practice_session(session_id, actor_id(), None)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        if body.kb_id and body.kb_id != session["kb_id"]:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        _find_kb(data, session["kb_id"])
+        if session["status"] != "active":
+            raise HTTPException(status_code=409, detail="练习已经结束")
+        body_for_chat = ChatBody(
+            query=transcript,
+            kb_id=session["kb_id"],
+            conversation_id=session.get("conversation_id") or None,
+            stream=False,
+        )
+        answer = ""
+        citations: list[dict[str, Any]] = []
+        memories: list[dict[str, Any]] = []
+        try:
+            async for event in _answer_events(body_for_chat):
+                if event.get("type") == "meta":
+                    citations = list(event.get("citations") or [])
+                elif event.get("type") == "done":
+                    answer = str(event.get("answer") or answer)
+                    citations = list(event.get("citations") or citations)
+                    memories = list(event.get("memories") or [])
+                elif event.get("type") == "error":
+                    raise HTTPException(status_code=503, detail=str(event.get("message") or "问答服务暂时不可用"))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("语音练习回合失败")
+            _app().add_voice_practice_turn(
+                session_id=session_id,
+                owner_id=actor_id(),
+                kb_id=session["kb_id"],
+                transcript=transcript,
+                status="failed",
+            )
+            raise HTTPException(status_code=503, detail="本轮回答失败，请重试") from exc
+        app = _app()
+        turn = app.add_voice_practice_turn(
+            session_id=session_id,
+            owner_id=actor_id(),
+            kb_id=session["kb_id"],
+            transcript=transcript,
+            answer=answer,
+            citations=citations,
+            memory_refs=memories,
+            status="completed" if answer else "failed",
+        )
+        return {
+            "turn_id": turn["id"],
+            "session_id": session_id,
+            "conversation_id": session.get("conversation_id") or "",
+            "transcript": transcript,
+            "answer": answer,
+            "citations": citations,
+            "memories": memories,
+            "audio_status": turn["audio_status"],
+        }
+
+    @router.post("/voice/speech")
+    async def voice_speech(body: VoiceSpeechBody):
+        from lightrag.product_voice import synthesize_speech
+
+        app = _app()
+        found = app.get_voice_practice_turn(body.turn_id, actor_id())
+        if found is None or found.get("status") != "completed" or (body.kb_id and found.get("kb_id") != body.kb_id):
+            raise HTTPException(status_code=404, detail="练习回答不存在")
+        app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "generating")
+        try:
+            audio, media_type = await synthesize_speech(found.get("answer") or "", body.voice)
+        except Exception as exc:
+            app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "failed")
+            raise _voice_http_error(exc) from exc
+        app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "ready")
+        return Response(content=audio, media_type=media_type, headers={"Cache-Control": "no-store"})
+
+    @router.websocket("/voice/realtime")
+    async def realtime_voice(websocket: WebSocket):
+        """Browser voice session: PCM frames in, ASR/answer/audio events out."""
+        from lightrag.product_realtime_voice import (
+            AliyunNlsConfig,
+            RealtimeVoiceError,
+            close_aliyun_socket,
+            open_aliyun_transcriber,
+            parse_transcriber_event,
+            stop_aliyun_transcriber,
+        )
+        from lightrag.product_voice import stream_speech
+
+        await websocket.accept()
+        user_token = None
+        provider = None
+        provider_task: asyncio.Task | None = None
+        provider_state: dict[str, Any] = {}
+        answer_task: asyncio.Task | None = None
+        tts_task: asyncio.Task | None = None
+        session_id = ""
+        kb_id = ""
+        session: dict[str, Any] = {}
+
+        def websocket_user(data: dict[str, Any]) -> dict[str, Any]:
+            if not product_auth_enabled():
+                return local_owner_view()
+            raw = ""
+            authorization = websocket.headers.get("authorization") or ""
+            if authorization.lower().startswith("bearer "):
+                raw = authorization[7:].strip()
+            if not raw:
+                raw = websocket.query_params.get("access_token") or ""
+            if not raw:
+                for protocol in websocket.scope.get("subprotocols") or []:
+                    if protocol.startswith("kb-access."):
+                        raw = protocol[len("kb-access."):]
+                        break
+            if not raw:
+                raise HTTPException(status_code=401, detail="未登录")
+            try:
+                payload = decode_access_payload(raw)
+            except Exception as exc:
+                raise HTTPException(status_code=401, detail="未登录") from exc
+            user = access_is_current(data, payload)
+            if user is None:
+                raise HTTPException(status_code=401, detail="未登录")
+            return public_user(user)
+
+        async def send(event: dict[str, Any]) -> bool:
+            if (
+                websocket.client_state != WebSocketState.CONNECTED
+                or websocket.application_state != WebSocketState.CONNECTED
+            ):
+                return False
+            try:
+                await websocket.send_text(json.dumps(event, ensure_ascii=False))
+                return True
+            except (WebSocketDisconnect, RuntimeError):
+                return False
+
+        async def stop_provider() -> dict[str, Any]:
+            nonlocal provider, provider_task, provider_state
+            current = provider
+            task = provider_task
+            provider = None
+            provider_task = None
+            if current is not None:
+                await stop_aliyun_transcriber(current[0], current[1], current[2])
+            if task is not None:
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
+                    await asyncio.wait_for(task, timeout=2.5)
+            if current is not None:
+                await close_aliyun_socket(current[0])
+            state = dict(provider_state)
+            provider_state = {}
+            return state
+
+        async def provider_reader(socket: Any, state: dict[str, Any]) -> None:
+            try:
+                async for raw in socket:
+                    event = parse_transcriber_event(raw)
+                    if not event:
+                        continue
+                    if event.get("type") == "transcript":
+                        state["text"] = str(event.get("text") or "")
+                        if event.get("final"):
+                            state["final"] = state["text"]
+                        await send(event)
+                    elif event.get("type") == "provider_ready":
+                        await send({"type": "asr_ready"})
+                    elif event.get("type") == "provider_error":
+                        state["error"] = event.get("message") or "阿里云实时识别失败"
+                        state["provider_code"] = event.get("provider_code") or ""
+                        await send({
+                            "type": "error",
+                            "stage": "asr",
+                            "message": state["error"],
+                            "provider_code": state["provider_code"],
+                        })
+                        break
+                    elif event.get("type") == "provider_done":
+                        state["completed"] = True
+                        break
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                state["error"] = "阿里云实时识别连接已断开"
+                logger.warning("实时 ASR 连接断开: %s", exc)
+                with contextlib.suppress(Exception):
+                    await send({"type": "error", "stage": "asr", "message": state["error"]})
+
+        async def start_provider() -> None:
+            nonlocal provider, provider_task, provider_state
+            config = AliyunNlsConfig.from_env()
+            provider = await open_aliyun_transcriber(config)
+            provider_state = {"text": "", "final": "", "ready": True}
+            provider_task = asyncio.create_task(provider_reader(provider[0], provider_state))
+            await send({"type": "asr_ready"})
+
+        async def cancel_answer(reason: str = "cancelled") -> None:
+            nonlocal answer_task, tts_task
+            for task in (answer_task, tts_task):
+                if task and not task.done():
+                    task.cancel()
+            for task in (answer_task, tts_task):
+                if task:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await task
+            answer_task = None
+            tts_task = None
+            with contextlib.suppress(Exception):
+                await send({"type": "answer_cancelled", "reason": reason})
+
+        async def speak_local_reply(text: str) -> None:
+            await send({"type": "answer_done", "answer": text, "citations": [], "memories": [], "answerable": True})
+            try:
+                await send({"type": "tts_start", "purpose": "local_reply"})
+                async for chunk in stream_speech(text):
+                    await websocket.send_bytes(chunk)
+                await send({"type": "tts_end", "purpose": "local_reply"})
+            except Exception as exc:
+                await send({"type": "error", "stage": "tts", "message": str(exc)[:240]})
+
+        async def answer_turn(transcript: str) -> None:
+            nonlocal tts_task
+            body_for_chat = ChatBody(
+                query=transcript,
+                kb_id=kb_id,
+                conversation_id=session.get("conversation_id") or None,
+                stream=True,
+                # Generate the structured answer first so citations are validated
+                # before any sentence is spoken. The validated answer is still
+                # emitted and synthesized incrementally below.
+                voice_stream=False,
+            )
+            tts_queue: asyncio.Queue[str | None] = asyncio.Queue()
+            tts_error_sent = False
+            tts_started = False
+
+            async def tts_worker() -> None:
+                nonlocal tts_error_sent, tts_started
+                while True:
+                    text = await tts_queue.get()
+                    try:
+                        if text is None:
+                            if tts_started:
+                                await send({"type": "tts_end"})
+                            return
+                        if not tts_started:
+                            tts_started = True
+                            await send({"type": "tts_start"})
+                        async for chunk in stream_speech(text):
+                            await websocket.send_bytes(chunk)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        if not tts_error_sent:
+                            tts_error_sent = True
+                            await send({"type": "error", "stage": "tts", "message": str(exc)[:240]})
+                    finally:
+                        tts_queue.task_done()
+
+            tts_task = asyncio.create_task(tts_worker())
+            await send({"type": "answer_status", "phase": "retrieving", "message": "正在查找相关资料"})
+            await tts_queue.put(_voice_thinking_ack(transcript))
+            sentence_buffer = ""
+            answer_text = ""
+            citations: list[dict[str, Any]] = []
+            memories: list[dict[str, Any]] = []
+            try:
+                async for event in _answer_events(body_for_chat):
+                    event_type = event.get("type")
+                    if event_type == "meta":
+                        citations = list(event.get("citations") or [])
+                        await send({"type": "answer_status", "phase": "composing", "message": "已找到相关资料，正在组织回答"})
+                    elif event_type == "token":
+                        text = str(event.get("text") or "")
+                        answer_text += text
+                        await send({"type": "answer_token", "text": text, "draft": bool(event.get("draft"))})
+                        sentence_buffer += text
+                        while True:
+                            match = re.search(r"[。！？!?；;]\s*", sentence_buffer)
+                            if not match:
+                                break
+                            segment = sentence_buffer[:match.end()].strip()
+                            sentence_buffer = sentence_buffer[match.end():]
+                            if segment:
+                                await tts_queue.put(segment)
+                    elif event_type == "done":
+                        answer_text = str(event.get("answer") or answer_text)
+                        citations = list(event.get("citations") or citations)
+                        memories = list(event.get("memories") or [])
+                        if sentence_buffer.strip():
+                            await tts_queue.put(sentence_buffer.strip())
+                            sentence_buffer = ""
+                        await send({
+                            "type": "answer_done",
+                            "answer": answer_text,
+                            "citations": citations,
+                            "memories": memories,
+                            "answerable": event.get("answerable"),
+                        })
+                        break
+                    elif event_type == "error":
+                        await send({"type": "error", "stage": "answer", "message": str(event.get("message") or "问答服务暂时不可用")})
+                        break
+                await tts_queue.join()
+                await tts_queue.put(None)
+                await tts_task
+                app = _app()
+                turn = app.add_voice_practice_turn(
+                    session_id=session_id,
+                    owner_id=actor_id(),
+                    kb_id=kb_id,
+                    transcript=transcript,
+                    answer=answer_text,
+                    citations=citations,
+                    memory_refs=memories,
+                    status="completed" if answer_text else "failed",
+                )
+                await send({
+                    "type": "turn_done",
+                    "transcript": transcript,
+                    "turn": turn,
+                    "conversation_id": session.get("conversation_id") or "",
+                })
+            except asyncio.CancelledError:
+                with contextlib.suppress(Exception):
+                    _app().add_voice_practice_turn(
+                        session_id=session_id,
+                        owner_id=actor_id(),
+                        kb_id=kb_id,
+                        transcript=transcript,
+                        status="cancelled",
+                    )
+                raise
+            finally:
+                if tts_task and not tts_task.done():
+                    tts_task.cancel()
+
+        try:
+            data = await _read()
+            user = websocket_user(data)
+            user_token = CURRENT_USER.set(user)
+            first = await websocket.receive_json()
+            if first.get("type") != "start" or not str(first.get("kb_id") or "").strip():
+                await send({"type": "error", "message": "实时会话缺少知识库"})
+                return
+            kb_id = str(first["kb_id"])
+            _find_kb(data, kb_id)
+            session_id = str(first.get("session_id") or "")
+            app = _app()
+            if session_id:
+                session = app.get_voice_practice_session(session_id, actor_id(), kb_id) or {}
+            if not session:
+                conversation = app.create_conversation(actor_id(), kb_id, "实时语音练习")
+                session = app.create_voice_practice_session(actor_id(), kb_id, goal=str(first.get("goal") or "free"), conversation_id=conversation["id"])
+                session_id = str(session.get("id") or "")
+            if session.get("status") != "active":
+                await send({"type": "error", "message": "练习会话已经结束"})
+                return
+            try:
+                await start_provider()
+            except RealtimeVoiceError as exc:
+                await send({
+                    "type": "error",
+                    "stage": "asr",
+                    "code": exc.code,
+                    "message": str(exc),
+                    "retryable": exc.code not in {
+                        "aliyun_not_configured",
+                        "aliyun_permission_denied",
+                        "aliyun_access_key_invalid",
+                        "realtime_dependency_missing",
+                    },
+                })
+                return
+            await send({
+                "type": "ready",
+                "session_id": session_id,
+                "kb_id": kb_id,
+                "conversation_id": session.get("conversation_id") or "",
+                "transport": "websocket",
+                "continuous": True,
+            })
+
+            while True:
+                message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                if message.get("bytes") is not None:
+                    if provider is None:
+                        continue
+                    try:
+                        await provider[0].send(message["bytes"])
+                    except Exception:
+                        await send({"type": "error", "stage": "asr", "message": "实时识别连接已断开，请重新连接"})
+                    continue
+                raw_text = message.get("text") or ""
+                try:
+                    command = json.loads(raw_text)
+                except ValueError:
+                    continue
+                command_type = command.get("type")
+                if command_type in {"barge_in", "cancel"}:
+                    await cancel_answer(command_type)
+                    continue
+                if command_type == "pause":
+                    await stop_provider()
+                    await send({"type": "paused"})
+                    continue
+                if command_type == "resume":
+                    await start_provider()
+                    await send({"type": "resumed"})
+                    continue
+                if command_type == "end_turn":
+                    state = await stop_provider()
+                    transcript = str(state.get("final") or state.get("text") or command.get("text") or "").strip()
+                    if not transcript:
+                        await send({"type": "error", "stage": "asr", "message": "没有识别到可用语音内容"})
+                        await start_provider()
+                        continue
+                    await send({"type": "transcript_final", "text": transcript})
+                    local_intent = _voice_local_intent(transcript)
+                    if local_intent is not None:
+                        intent, reply = local_intent
+                        if answer_task and not answer_task.done():
+                            await cancel_answer("voice_command")
+                        await send({
+                            "type": "answer_status",
+                            "phase": "ending" if intent == "finish" else "responding",
+                            "message": "正在结束本次对话" if intent == "finish" else "正在回应",
+                        })
+                        await speak_local_reply(reply)
+                        turn = _app().add_voice_practice_turn(
+                            session_id=session_id,
+                            owner_id=actor_id(),
+                            kb_id=kb_id,
+                            transcript=transcript,
+                            answer=reply,
+                            citations=[],
+                            memory_refs=[],
+                            status="completed",
+                        )
+                        await send({
+                            "type": "turn_done",
+                            "transcript": transcript,
+                            "turn": turn,
+                            "conversation_id": session.get("conversation_id") or "",
+                        })
+                        if intent == "finish":
+                            updated = _app().update_voice_practice_session(
+                                session_id,
+                                actor_id(),
+                                kb_id,
+                                status="completed",
+                                summary="用户通过语音结束了实时对话",
+                            )
+                            await send({"type": "finished", "session": updated or session, "reason": "voice_command"})
+                            break
+                        await start_provider()
+                        continue
+                    await send({"type": "answer_status", "phase": "understanding", "message": "正在理解你的问题"})
+                    if answer_task and not answer_task.done():
+                        await cancel_answer("new_turn")
+                    answer_task = asyncio.create_task(answer_turn(transcript))
+                    await start_provider()
+                    continue
+                if command_type == "finish":
+                    await cancel_answer("finish")
+                    await stop_provider()
+                    updated = _app().update_voice_practice_session(session_id, actor_id(), kb_id, status="completed", summary="实时语音练习已结束")
+                    await send({"type": "finished", "session": updated or session})
+                    break
+        except WebSocketDisconnect:
+            return
+        except HTTPException as exc:
+            with contextlib.suppress(Exception):
+                await send({"type": "error", "code": "auth", "message": str(exc.detail), "retryable": False})
+        except Exception as exc:
+            logger.exception("实时语音会话失败")
+            with contextlib.suppress(Exception):
+                await send({"type": "error", "message": "实时语音会话暂时不可用"})
+        finally:
+            await cancel_answer("disconnect")
+            await stop_provider()
+            if user_token is not None:
+                CURRENT_USER.reset(user_token)
+
+    @router.post("/voice/practice/{session_id}/finish")
+    async def finish_voice_practice(session_id: str, body: VoiceFinishBody):
+        data = await _read()
+        session = _app().get_voice_practice_session(session_id, actor_id(), None)
+        if session is None:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        if body.kb_id and body.kb_id != session["kb_id"]:
+            raise HTTPException(status_code=404, detail="练习不存在")
+        _find_kb(data, session["kb_id"])
+        turns = _app().list_voice_practice_turns(session_id, actor_id(), session["kb_id"])
+        summary = (body.summary or "").strip()
+        if not summary:
+            summary = f"本次练习完成 {len([item for item in turns if item.get('status') == 'completed'])} 轮。"
+        updated = _app().update_voice_practice_session(
+            session_id,
+            actor_id(),
+            session["kb_id"],
+            status="completed",
+            summary=summary,
+        )
+        return updated or session
 
     async def _remember_summary(session_id: str, kb_id: str, history: list[dict[str, Any]]) -> None:
         _recent, older = window_and_older(history)
@@ -2052,7 +2748,16 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             saved_assistant = True
             return row
 
-        memories = app.enabled_memories(user_id)
+        memory_embedding = await _embedding_for(rag, body.query.strip())
+        memories = app.retrieve_memories(
+            user_id,
+            body.kb_id,
+            body.query.strip(),
+            top_k=5,
+            token_budget=1200,
+            embedding=memory_embedding,
+            embedding_model=os.getenv("EMBEDDING_MODEL") or "",
+        )
         try:
             first = True
             async for event in stream_answer(
@@ -2079,6 +2784,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 working_dir=Path(rag.working_dir),
                 live_versions=live_versions,
                 memories=memories,
+                live_stream=bool(body.voice_stream),
             ):
                 if first:
                     event = {**event, "conversation_id": conversation["id"]}
@@ -2240,7 +2946,8 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         for node in nodes:
             if not _node_in_scope(node, kb_id, bindings):
                 continue
-            name = str(node.get("id") or "")
+            node_id = str(node.get("id") or "")
+            name = _entity_display_name(node_id, node)
             etype = node.get("entity_type") or "未知"
             if isinstance(etype, list):
                 etype = etype[0] if etype else "未知"
@@ -2251,15 +2958,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             if needle and needle not in name.lower() and needle not in desc.lower():
                 continue
             chunk_ids = _chunk_mentions(node.get("source_id"))
-            doc_names = _kb_filenames(node.get("file_path"), kb_id, bindings)
+            documents = _graph_document_refs(node, data, kb_id, bindings)
             items.append(
                 {
+                    "id": node_id,
                     "name": name,
                     "entity_type": etype,
                     "description": desc,
                     "frequency": len(chunk_ids),
                     "chunk_ids": chunk_ids,
-                    "doc_count": len(doc_names),
+                    "doc_count": len(documents),
+                    "documents": documents,
                 }
             )
         reverse = sort != "frequency_asc"
@@ -2272,38 +2981,42 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         data = await _read()
         return _find_kb(data, kb_id)
 
-    @router.get("/graph/entities/{entity_name}/neighbors")
-    async def entity_neighbors(kb_id: str, entity_name: str, hops: int = 2):
+    @router.get("/graph/entities/{entity_id}/neighbors")
+    async def entity_neighbors(kb_id: str, entity_id: str, hops: int = 2):
         data = await _read()
         _find_kb(data, kb_id)
         bindings = data.get("file_bindings") or {}
         graph = rag.chunk_entity_relation_graph
-        center = await graph.get_node(entity_name)
+        center = await graph.get_node(entity_id)
         if not center or not _node_in_scope(center, kb_id, bindings):
             raise HTTPException(status_code=404, detail="实体不存在")
-        pairs = await graph.get_node_edges(entity_name) or []
+        pairs = await graph.get_node_edges(entity_id) or []
         neighbors = []
         for src, tgt in pairs[:50]:
-            other = tgt if src == entity_name else src
+            other = tgt if src == entity_id else src
             other_node = await graph.get_node(other) or {}
             if other_node and not _node_in_scope(other_node, kb_id, bindings):
                 continue
             edge = await graph.get_edge(src, tgt) or await graph.get_edge(tgt, src) or {}
             neighbors.append(
                 {
-                    "neighbor_name": other,
+                    "neighbor_id": other,
+                    "neighbor_name": _entity_display_name(other, other_node),
                     "neighbor_type": other_node.get("entity_type") or "未知",
                     "neighbor_desc": _clean_text(other_node.get("description"), 120),
                     "relation_type": _clean_text(edge.get("keywords") or "关联", 24),
                     "description": _clean_text(edge.get("description"), 160),
                     "weight": edge.get("weight") or 1,
+                    "documents": _graph_document_refs(other_node, data, kb_id, bindings),
                 }
             )
         return {
             "entity": {
-                "name": entity_name,
+                "id": entity_id,
+                "name": _entity_display_name(entity_id, center),
                 "entity_type": center.get("entity_type") or "未知",
                 "description": _clean_text(center.get("description"), 400),
+                "documents": _graph_document_refs(center, data, kb_id, bindings),
             },
             "neighbors": neighbors,
             "hops": hops,
@@ -2323,7 +3036,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         graph = rag.chunk_entity_relation_graph
         nodes = await graph.get_all_nodes()
         in_kb = {
-            str(node.get("id") or "")
+            str(node.get("id") or ""): node
             for node in nodes
             if _node_in_scope(node, kb_id, bindings)
         }
@@ -2346,8 +3059,10 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 weight = 1.0
             scoped.append(
                 {
-                    "source": source,
-                    "target": target,
+                    "source_id": source,
+                    "target_id": target,
+                    "source": _entity_display_name(source, in_kb[source]),
+                    "target": _entity_display_name(target, in_kb[target]),
                     "relation_type": keywords or (labels[0] if labels else "关联"),
                     "keywords": keywords,
                     "description": _clean_text(edge.get("description"), 200),
@@ -2376,41 +3091,129 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     @router.get("/graph/subgraph")
     async def get_subgraph(
         kb_id: str,
+        entity_id: Optional[str] = None,
         entity_name: Optional[str] = None,
         hops: int = 2,
-        limit: int = 80,
+        limit: int = 24,
     ):
         data = await _read()
         _find_kb(data, kb_id)
         bindings = data.get("file_bindings") or {}
-        label = entity_name.strip() if entity_name else "*"
-        graph = await rag.get_knowledge_graph(
-            node_label=label or "*",
-            max_depth=max(1, min(hops, 3)),
-            max_nodes=max(1, min(limit, 200)),
+        graph_store = rag.chunk_entity_relation_graph
+        raw_nodes, raw_edges = scoped_graph_records(
+            await graph_store.get_all_nodes(),
+            await graph_store.get_all_edges(),
+            kb_id,
+            bindings,
         )
-        nodes = []
-        kept_ids: set[str] = set()
-        for node in graph.nodes:
-            props = node.properties or {}
-            if not _node_in_scope(props, kb_id, bindings):
+        node_map = {str(node.get("id") or ""): node for node in raw_nodes}
+        adjacency: dict[str, set[str]] = {node_id: set() for node_id in node_map}
+        scoped_edges: list[dict[str, Any]] = []
+        for edge in raw_edges:
+            source = str(edge.get("source") or "")
+            target = str(edge.get("target") or "")
+            if source not in node_map or target not in node_map or source == target:
                 continue
-            degree = 1
-            try:
-                degree = await rag.chunk_entity_relation_graph.node_degree(node.id)
-            except Exception:
-                degree = 1
-            nodes.append(_node_view(node.id, props, degree))
-            kept_ids.add(node.id)
-        edges = []
-        for edge in graph.edges:
-            if edge.source not in kept_ids or edge.target not in kept_ids:
-                continue
-            props = edge.properties or {}
-            if not scope_visible(props, kb_id, bindings):
-                continue
-            edges.append(_edge_view(edge.source, edge.target, props))
-        return {"nodes": nodes, "edges": edges, "is_truncated": graph.is_truncated}
+            adjacency[source].add(target)
+            adjacency[target].add(source)
+            scoped_edges.append(edge)
+
+        requested_id = (entity_id or "").strip()
+        requested_name = (entity_name or "").strip().casefold()
+        center_id = requested_id if requested_id in node_map else ""
+        if not center_id and requested_name:
+            exact = [
+                node_id for node_id, props in node_map.items()
+                if _entity_display_name(node_id, props).casefold() == requested_name
+            ]
+            partial = [
+                node_id for node_id, props in node_map.items()
+                if requested_name in _entity_display_name(node_id, props).casefold()
+                or requested_name in str(props.get("description") or "").casefold()
+            ]
+            matches = exact or partial
+            if matches:
+                center_id = max(matches, key=lambda item: len(adjacency.get(item, set())))
+
+        max_nodes = max(1, min(limit, 60))
+        selected_ids: list[str] = []
+        truncated = False
+        if center_id:
+            max_depth = max(1, min(hops, 3))
+            queue: list[tuple[str, int]] = [(center_id, 0)]
+            visited: set[str] = set()
+            while queue and len(selected_ids) < max_nodes:
+                current, depth = queue.pop(0)
+                if current in visited:
+                    continue
+                visited.add(current)
+                selected_ids.append(current)
+                if depth >= max_depth:
+                    continue
+                neighbors = sorted(
+                    adjacency.get(current, set()),
+                    key=lambda item: len(adjacency.get(item, set())),
+                    reverse=True,
+                )
+                queue.extend((neighbor, depth + 1) for neighbor in neighbors if neighbor not in visited)
+            truncated = bool(queue)
+        elif requested_id or requested_name:
+            return {
+                "nodes": [], "edges": [], "mode": "focused", "center_id": None,
+                "is_truncated": False, "empty_reason": "没有找到匹配的实体",
+            }
+        else:
+            # The overview is intentionally a compact set of connected, high-value
+            # entities. Isolated extraction artifacts are not useful exploration
+            # entry points and remain available from the entity management table.
+            connected = [node_id for node_id, neighbors in adjacency.items() if neighbors]
+            ranked = sorted(
+                connected,
+                key=lambda item: (
+                    len(adjacency[item]),
+                    len(_chunk_mentions(node_map[item].get("source_id"))),
+                    _entity_display_name(item, node_map[item]),
+                ),
+                reverse=True,
+            )
+            candidates = set(ranked[:max_nodes])
+            overview_edges = [
+                edge for edge in scoped_edges
+                if str(edge.get("source") or "") in candidates
+                and str(edge.get("target") or "") in candidates
+            ]
+            linked_ids = {
+                endpoint
+                for edge in overview_edges
+                for endpoint in (str(edge.get("source") or ""), str(edge.get("target") or ""))
+            }
+            selected_ids = [node_id for node_id in ranked[:max_nodes] if node_id in linked_ids]
+            truncated = len(connected) > len(selected_ids)
+
+        kept_ids = set(selected_ids)
+        nodes = [
+            _node_view(
+                node_id,
+                node_map[node_id],
+                len(adjacency.get(node_id, set())),
+                _graph_document_refs(node_map[node_id], data, kb_id, bindings),
+            )
+            for node_id in selected_ids
+        ]
+        edges = [
+            _edge_view(str(edge.get("source") or ""), str(edge.get("target") or ""), edge)
+            for edge in scoped_edges
+            if str(edge.get("source") or "") in kept_ids
+            and str(edge.get("target") or "") in kept_ids
+        ]
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "mode": "focused" if center_id else "overview",
+            "center_id": center_id or None,
+            "is_truncated": truncated,
+            "empty_reason": "" if nodes else "还没有可探索的实体关系",
+        }
 
     @router.get("/graph/config")
     async def get_graph_config(kb_id: str):

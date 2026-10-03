@@ -22,7 +22,7 @@ export const RECOMMENDED_RETRIEVAL = {
   top_k: 10,
   similarity_ratio: 0.5,
   similarity_threshold: 0.2,
-  rerank_enabled: false,
+  rerank_enabled: true,
 }
 
 export const STAGE_LABEL: Record<string, string> = {

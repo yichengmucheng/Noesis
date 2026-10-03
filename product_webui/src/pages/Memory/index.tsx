@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Typography, Button, Space, List, Switch, Input, Modal, Tag, Empty, message, Popconfirm } from 'antd'
+import { Typography, Button, Space, List, Switch, Input, Modal, Tag, Empty, message, Popconfirm, Select } from 'antd'
 import { memoryApi } from '../../api'
 import type { MemoryCandidate, MemoryItem } from '../../types'
 
@@ -13,13 +13,14 @@ export default function MemoryPage() {
   const [memories, setMemories] = useState<MemoryItem[]>([])
   const [editing, setEditing] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState('')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'kb'>('all')
 
   const load = () => {
     memoryApi.listCandidates(kbId).then(page => setCandidates(page.items || []))
-    memoryApi.list().then(page => setMemories(page.items || []))
+    memoryApi.list(scopeFilter === 'kb' ? kbId : undefined).then(page => setMemories(page.items || []))
   }
 
-  useEffect(() => { load() }, [kbId])
+  useEffect(() => { load() }, [kbId, scopeFilter])
 
   return (
     <div style={{ padding: 16, maxWidth: 860 }} data-testid="memory-page">
@@ -44,7 +45,16 @@ export default function MemoryPage() {
           )}
         />
       )}
-      <Title level={5} style={{ marginTop: 24 }}>已确认记忆</Title>
+      <Space align="center" style={{ marginTop: 24, marginBottom: 8 }}>
+        <Title level={5} style={{ margin: 0 }}>已确认记忆</Title>
+        <Select
+          size="small"
+          value={scopeFilter}
+          onChange={setScopeFilter}
+          options={[{ value: 'all', label: '所有资料库' }, { value: 'kb', label: '仅此资料库' }]}
+          aria-label="记忆范围"
+        />
+      </Space>
       {memories.length === 0 ? <Empty description="还没有个人记忆" /> : (
         <List
           dataSource={memories}
@@ -66,7 +76,12 @@ export default function MemoryPage() {
             >
               <List.Item.Meta
                 title={item.content}
-                description={<Space><Tag>{item.category || 'other'}</Tag><Text type="secondary">{item.enabled === false ? '已关闭，不参与回答' : '已启用'}</Text></Space>}
+                description={<Space wrap>
+                  <Tag>{item.category || 'other'}</Tag>
+                  <Tag color={item.scope === 'kb' ? 'blue' : 'default'}>{item.scope === 'kb' ? '当前资料库' : '所有资料库'}</Tag>
+                  <Text type="secondary">{item.source_status && item.source_status !== 'active' ? '来源不可用' : item.enabled === false ? '已关闭，不参与回答' : '已启用'}</Text>
+                  {item.expires_at ? <Text type="secondary">{new Date(item.expires_at).getTime() <= Date.now() ? '已过期' : `有效至 ${new Date(item.expires_at).toLocaleDateString()}`}</Text> : null}
+                </Space>}
               />
             </List.Item>
           )}

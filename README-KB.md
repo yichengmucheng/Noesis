@@ -147,9 +147,44 @@ lightrag.log                     # 运行日志
 ```
 
 迁移到新机器 = 拷贝整个 `LightRAG_test` 目录 + 一个能访问 SiliconFlow 的网络。
-备份知识库 = 备份 `rag_storage/` + `inputs/` 两个目录。
+备份知识库 = 备份 `rag_storage/` + `inputs/` 两个目录；同时必须备份
+`product_app.sqlite`（会话、消息、反馈和已确认个人记忆）。应用库启用 WAL，
+不要只复制正在运行中的 `-wal` / `-shm` 文件，使用 SQLite backup 命令生成一致性快照：
 
-## 8. 测试
+```powershell
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage `
+  --backup backups/product_app-$(Get-Date -Format yyyyMMddHHmmss).sqlite
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage --check
+```
+
+恢复前停止 API 和 Worker，确认备份来自同一用户数据快照，然后执行：
+
+```powershell
+python -m lightrag.product_appdb_backup --working-dir data/rag_storage `
+  --backup backups/product_app-20261002.sqlite --restore --check
+```
+
+恢复后重新启动服务，并检查会话、反馈、记忆和知识库归属。应用库当前支持单机
+SQLite + 一个 API 进程及一个 Worker 进程；多 API 进程部署前应迁移到 PostgreSQL，
+本阶段不自动引入 PostgreSQL。
+
+## 8. 半双工语音练习（Phase C1）
+
+语音练习是浏览器录音 → ASR 转写 → 复用可信问答 → TTS 播放的半双工流程。语音不会绕过
+知识库检索、文档引用或个人记忆作用域。练习会话和回合保存在 `product_app.sqlite`，随知识库
+删除一起清理，并随应用库备份恢复。
+
+需要外部 OpenAI-compatible 服务时，在部署环境设置 `ASR_API_BASE`、`ASR_API_KEY`、
+`ASR_MODEL` 与 `TTS_API_BASE`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_VOICE`。未配置时，界面会
+明确提示服务尚未配置，不会生成占位文本或空音频。第一版不做全双工抢话、声纹、发音评分、
+情绪识别、视频或音频资料入库。
+
+API：`POST /api/v1/voice/practice/sessions`、`POST /api/v1/voice/transcribe`、
+`POST /api/v1/voice/practice/{session_id}/turn`、`POST /api/v1/voice/speech`、
+`POST /api/v1/voice/practice/{session_id}/finish`。所有接口都要求当前用户身份，练习回合必须
+属于当前知识库。
+
+## 9. 测试
 
 ```powershell
 python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
@@ -157,7 +192,7 @@ python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
 #（该测试需要本机 11434 端口的 Ollama 服务，与 LightRAG 主链路无关）
 ```
 
-## 9. 本次改造的技术细节（2026-09-27）
+## 10. 本次改造的技术细节（2026-09-27）
 
 1. **docx 解析结构化**（`document_routes.py`）：原实现把段落拼成一串、表格变制表符文本；
    现按文档顺序遍历段落+表格，Heading 样式→`#` 层级，表格→`<table>` 原子块。
@@ -171,7 +206,7 @@ python -m pytest -q     # 后端全量（含 8 个新增原生切块单测）
    轮询容错（服务处理期丢弃 keep-alive 的瞬时 10053/10054）。
 5. **启动脚本** `start_kb.ps1/.bat`：内置 UTF-8 环境、端口探测、目录校验。
 
-## 10. 常见问题（FAQ）
+## 11. 常见问题（FAQ）
 
 **Q: upload 返回 502 / connection reset？**
 A: Python `httpx` 默认读系统注册表代理（本机 Clash 127.0.0.1:7897），
@@ -191,7 +226,7 @@ A: 确认 start_kb.ps1 无报错且端口 9621 监听；浏览器走系统代理
 A: 编辑 `.env` 的 `LLM_MODEL`（如 `Qwen/Qwen2.5-32B-Instruct` 或 Qwen3 系列），
 重启服务。Embedding 不要动（换维度需重建索引）。
 
-## 11. 存储损坏后的重建（一键修复）
+## 12. 存储损坏后的重建（一键修复）
 
 源文档都保存在 `inputs/` 与 `lightrag/api/routers/output/*.md`（OCR 抽取结果），
 即使 `rag_storage` 被写坏也随时可重建：
@@ -209,7 +244,7 @@ A: 编辑 `.env` 的 `LLM_MODEL`（如 `Qwen/Qwen2.5-32B-Instruct` 或 Qwen3 系
 要重建后常驻服务供 WebUI 使用，加 `-Keep`。
 重建全程约 10–15 分钟（单文档 1–3 分钟），期间保持窗口打开。
 
-## 12. 账户、迁移、备份和删除
+## 13. 账户、迁移、备份和删除
 
 开发环境保持 `PRODUCT_AUTH` 为空。控制台可以匿名使用，已有知识库归在迁移用户 `local-owner` 下。
 
@@ -241,9 +276,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-re
 
 修改 `.env` 后必须 `--force-recreate`。`docker restart` 不会重新读取环境变量。
 
-备份时复制 `data/rag_storage` 和 `data/originals`。密钥轮换时先在模型平台更换密钥，再写入 `.env` 并重建容器，不要把 `.env` 提交到仓库。刷新令牌放在 HttpOnly Cookie 中，访问令牌只留在浏览器内存。
+备份时复制 `data/rag_storage`、`data/originals`，并使用上面的 SQLite backup 命令保存
+`product_app.sqlite`。密钥轮换时先在模型平台更换密钥，再写入 `.env` 并重建容器，
+不要把 `.env` 提交到仓库。刷新令牌放在 HttpOnly Cookie 中，访问令牌只留在浏览器内存。
 
-## 13. 任务队列
+## 14. 任务队列
 
 上传和删除不再放在接口进程的内存里。接口只创建任务并返回 `job_id`，独立进程执行：
 
@@ -264,3 +301,13 @@ python -m lightrag.product_storage_check --working-dir data/rag_storage --repair
 ```
 
 `--repair-safe` 只恢复已经存在且可读的备份，或把过期租约收回队列。它不会猜测 `owner_id` 或 `kb_id`。无法确认归属的数据留在隔离区，不参与检索。
+
+## 15. 实时语音对话
+
+语音练习页提供 WebSocket 实时会话：浏览器持续发送 16 kHz 单声道 PCM，阿里云 NLS 返回增量转写；用户停顿后进入当前知识库的检索、问答和个人记忆链路，回答 token 和 TTS 音频按流发送。会话仍校验 `owner_id`、`kb_id`，来源引用沿用普通问答的证据结构。
+
+实时 ASR 需要在服务端配置 `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 和阿里 NLS 项目的 `ALIYUN_NLS_APP_KEY`（也可以配置短期 `ALIYUN_NLS_TOKEN`）。密钥只放服务端环境变量，不传给浏览器。
+
+TTS provider 必须显式选择。默认 `TTS_PROVIDER=siliconflow` 使用现有 OpenAI-compatible HTTP 流；阿里 NLS 语音合成需要在控制台开通对应能力并设置 `TTS_PROVIDER=aliyun_nls`、`ALIYUN_TTS_APP_KEY`（或 token）和可用音色 `ALIYUN_TTS_VOICE`。ASR 已配置不代表 TTS 已开通，未配置时页面会显示服务错误，不会播放空音频。
+
+WebSocket 断线会在浏览器端以 1、2、4、8 秒退避重连，最多 5 次，并复用当前练习会话；用户主动结束或取消后不会自动重连。浏览器需要允许麦克风和 WebSocket 连接，生产环境应使用 HTTPS/WSS。

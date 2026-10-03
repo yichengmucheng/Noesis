@@ -45,8 +45,10 @@ function WrapText({ text, strong }: { text: string; strong?: boolean }) {
 }
 
 // ─── 力导向图（SVG）─────────────────────────────────────────
-interface GraphNode { id: string; label: string; type: string; desc: string; frequency: number; x?: number; y?: number; vx?: number; vy?: number }
+interface GraphDocument { document_id: string; name: string }
+interface GraphNode { id: string; label: string; type: string; desc: string; frequency: number; documents?: GraphDocument[]; x?: number; y?: number; vx?: number; vy?: number }
 interface GraphEdge { from: string; to: string; label: string; desc: string; weight: number }
+interface GraphFocus { entityId?: string; entityName?: string }
 
 function ForceGraph({
   nodes, edges, onNodeClick,
@@ -58,6 +60,7 @@ function ForceGraph({
   const nodesRef = useRef<GraphNode[]>([])
   const WIDTH = 900
   const HEIGHT = 580
+  const graphSignature = `${nodes.map(node => node.id).join('|')}::${edges.map(edge => `${edge.from}>${edge.to}`).join('|')}`
 
   useEffect(() => {
     if (!nodes.length) return
@@ -70,9 +73,10 @@ function ForceGraph({
     nodesRef.current = placed
     simulate()
     return () => cancelAnimationFrame(animRef.current!)
-  }, [nodes.length, edges.length])
+  }, [graphSignature])
 
   const simulate = () => {
+    let frame = 0
     const run = () => {
       const ns = nodesRef.current
       const edgeMap = new Map<string, string[]>()
@@ -114,7 +118,8 @@ function ForceGraph({
       const pos = new Map<string, { x: number; y: number }>()
       ns.forEach(n => pos.set(n.id, { x: n.x!, y: n.y! }))
       setPositions(new Map(pos))
-      animRef.current = requestAnimationFrame(run)
+      frame += 1
+      if (frame < 120) animRef.current = requestAnimationFrame(run)
     }
     animRef.current = requestAnimationFrame(run)
   }
@@ -163,8 +168,9 @@ function ForceGraph({
               style={{ filter: 'drop-shadow(0 0 6px currentColor)' }} />
             <text x={x} y={y + r + 12} fill="#c8d8e8" fontSize={10} textAnchor="middle"
               style={{ userSelect: 'none', pointerEvents: 'none' }}>
-              {n.label?.slice(0, 8)}
+              {n.label?.length > 12 ? `${n.label.slice(0, 12)}…` : n.label}
             </text>
+            <title>{`${n.label} · ${n.type}`}</title>
           </g>
         )
       })}
@@ -186,12 +192,14 @@ export default function GraphPage() {
   const [searchEntity, setSearchEntity] = useState('')
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [nodeNeighbors, setNodeNeighbors] = useState<any[]>([])
+  const [graphMode, setGraphMode] = useState<'overview' | 'focused'>('overview')
+  const [graphEmptyReason, setGraphEmptyReason] = useState('')
   // 实体
   const [entities, setEntities] = useState<any[]>([])
   const [entityTotal, setEntityTotal] = useState(0)
   const [entityLoading, setEntityLoading] = useState(false)
   const [entityFilter, setEntityFilter] = useState<{ type?: string; search?: string; page: number; sort?: string }>({ page: 1 })
-  const [graphQuery, setGraphQuery] = useState<{ name?: string; nonce: number }>({ nonce: 0 })
+  const [graphQuery, setGraphQuery] = useState<GraphFocus & { nonce: number }>({ nonce: 0 })
   const graphReq = useRef(0)
   // 关系
   const [relations, setRelations] = useState<any[]>([])
@@ -213,15 +221,18 @@ export default function GraphPage() {
     } catch { /* 静默 */ }
   }, [kbId])
 
-  const loadSubgraph = useCallback(async (entity?: string) => {
+  const loadSubgraph = useCallback(async (focus?: GraphFocus) => {
     if (!kbId) return
     const req = ++graphReq.current
     setGraphLoading(true)
     try {
-      const data = await graphApi.getSubgraph(kbId, entity || undefined, 2, 80)
+      const hasFocus = Boolean(focus?.entityId || focus?.entityName)
+      const data = await graphApi.getSubgraph(kbId, hasFocus ? focus : undefined, 2, hasFocus ? 40 : 24)
       if (req !== graphReq.current) return
       setGraphNodes(data.nodes || [])
       setGraphEdges(data.edges || [])
+      setGraphMode(data.mode === 'focused' ? 'focused' : 'overview')
+      setGraphEmptyReason(data.empty_reason || '')
     } catch (e) {
       if (req === graphReq.current) message.error('图谱加载失败')
     } finally {
@@ -229,10 +240,12 @@ export default function GraphPage() {
     }
   }, [kbId])
 
-  const requestGraph = (name?: string) => {
-    const next = name?.trim() || undefined
-    setSearchEntity(next || '')
-    setGraphQuery(current => ({ name: next, nonce: current.nonce + 1 }))
+  const requestGraph = (focus?: GraphFocus) => {
+    const nextName = focus?.entityName?.trim() || undefined
+    const nextId = focus?.entityId?.trim() || undefined
+    setSearchEntity(nextName || '')
+    setSelectedNode(null)
+    setGraphQuery(current => ({ entityId: nextId, entityName: nextName, nonce: current.nonce + 1 }))
     setActiveTab('browser')
   }
 
@@ -291,7 +304,7 @@ export default function GraphPage() {
   useEffect(() => { loadStats() }, [loadStats])
   useEffect(() => {
     if (activeTab !== 'browser') return
-    loadSubgraph(graphQuery.name)
+    loadSubgraph({ entityId: graphQuery.entityId, entityName: graphQuery.entityName })
   }, [activeTab, graphQuery, loadSubgraph])
   useEffect(() => { if (activeTab === 'entities') loadEntities() }, [activeTab, loadEntities])
   useEffect(() => { if (activeTab === 'relations') loadRelations() }, [activeTab, loadRelations])
@@ -301,7 +314,7 @@ export default function GraphPage() {
     setSelectedNode(node)
     if (!kbId) return
     try {
-      const data = await graphApi.getEntityNeighbors(kbId, node.label)
+      const data = await graphApi.getEntityNeighbors(kbId, node.id)
       setNodeNeighbors(data.neighbors || [])
     } catch { setNodeNeighbors([]) }
   }
@@ -362,7 +375,7 @@ export default function GraphPage() {
       title: '操作', key: 'action', width: 100,
       render: (_: any, row: any) => (
         <Button size="small" type="link"
-          onClick={() => requestGraph(row.name)}>
+          onClick={() => requestGraph({ entityId: row.id, entityName: row.name })}>
           查看图谱
         </Button>
       ),
@@ -447,11 +460,11 @@ export default function GraphPage() {
                       placeholder="搜索实体名称…"
                       value={searchEntity}
                       onChange={e => setSearchEntity(e.target.value)}
-                      onSearch={v => requestGraph(v)}
+                      onSearch={v => requestGraph({ entityName: v })}
                       style={{ width: 240 }}
                     />
                     <Button icon={<ReloadOutlined />} onClick={() => requestGraph()}>
-                      显示全图
+                      核心关系
                     </Button>
                     <Space wrap>
                       {typeDist.map((item: { type?: string }) => {
@@ -471,6 +484,14 @@ export default function GraphPage() {
                     </Space>
                   </Space>
 
+                  <div style={{ marginBottom: 12 }}>
+                    <Text type="secondary">
+                      {graphMode === 'focused'
+                        ? `正在探索“${graphNodes.find(node => node.id === graphQuery.entityId)?.label || graphQuery.entityName || '实体'}”的两跳关系`
+                        : '展示关联度最高的核心实体；搜索或点击节点可继续展开两跳关系'}
+                    </Text>
+                  </div>
+
                   <Spin spinning={graphLoading}>
                     {graphNodes.length > 0 ? (
                       <>
@@ -479,15 +500,19 @@ export default function GraphPage() {
                         </div>
                         <div className="graph-mobile-fallback">
                           {graphNodes.map(node => (
-                            <div key={node.id} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0', overflowWrap: 'anywhere' }}>
+                            <div key={node.id} role="button" tabIndex={0}
+                              onClick={() => handleNodeClick(node)}
+                              onKeyDown={event => { if (event.key === 'Enter') handleNodeClick(node) }}
+                              style={{ padding: '10px 0', borderBottom: '1px solid #f0f0f0', overflowWrap: 'anywhere', cursor: 'pointer' }}>
                               <Text strong>{node.label}</Text>
                               <Text type="secondary"> · {node.type}</Text>
+                              <div><Text type="secondary" style={{ fontSize: 12 }}>{node.frequency} 条关联</Text></div>
                             </div>
                           ))}
                         </div>
                       </>
                     ) : (
-                      <Empty description="还没有知识关联，上传资料后会在这里显示" style={{ padding: 80 }} />
+                      <Empty description={graphEmptyReason || '还没有可探索的知识关联'} style={{ padding: 80 }} />
                     )}
                   </Spin>
 
@@ -504,7 +529,23 @@ export default function GraphPage() {
                           {selectedNode.type}
                         </Tag>
                         <Title level={5}>{selectedNode.label}</Title>
-                        <Text type="secondary">{selectedNode.desc}</Text>
+                        <Text type="secondary">{selectedNode.desc || '暂无实体说明'}</Text>
+                        <div style={{ marginTop: 16 }}>
+                          <Button type="primary" icon={<NodeIndexOutlined />}
+                            onClick={() => requestGraph({ entityId: selectedNode.id, entityName: selectedNode.label })}>
+                            以此实体为中心展开
+                          </Button>
+                        </div>
+                        <Divider>资料来源</Divider>
+                        {(selectedNode.documents || []).length > 0 ? (
+                          <Space wrap>
+                            {(selectedNode.documents || []).map((doc, index) => (
+                              <Tag key={`${doc.document_id || doc.name}-${index}`}>{doc.name}</Tag>
+                            ))}
+                          </Space>
+                        ) : (
+                          <Text type="secondary">暂无可定位的资料来源</Text>
+                        )}
                         <Divider>关联实体（{nodeNeighbors.length}）</Divider>
                         {nodeNeighbors.map((nb, i) => (
                           <div key={i} style={{ marginBottom: 8, padding: '6px 10px',
@@ -514,7 +555,7 @@ export default function GraphPage() {
                                 {nb.neighbor_type}
                               </Tag>
                               <Text strong style={{ cursor: 'pointer', color: '#1677ff' }}
-                                onClick={() => { requestGraph(nb.neighbor_name); setSelectedNode(null) }}>
+                                onClick={() => requestGraph({ entityId: nb.neighbor_id, entityName: nb.neighbor_name })}>
                                 {nb.neighbor_name}
                               </Text>
                               <Tag color="#722ed1" style={{ color: '#fff', fontSize: 11 }}>
@@ -561,7 +602,7 @@ export default function GraphPage() {
                   <Table
                     columns={entityColumns}
                     dataSource={entities}
-                    rowKey="name"
+                    rowKey="id"
                     loading={entityLoading}
                     size="small"
                     onChange={(pagination, _filters, sorter) => {

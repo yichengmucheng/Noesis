@@ -5,6 +5,7 @@ import {
   FileTextOutlined, MessageOutlined, SearchOutlined, ApartmentOutlined,
   SettingOutlined, DiffOutlined, AuditOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   UserOutlined, ToolOutlined, BookOutlined,
+  AudioOutlined,
 } from '@ant-design/icons'
 import { kbApi } from '../../api'
 import AccountDrawer from '../../components/AccountDrawer'
@@ -16,6 +17,7 @@ const PRIMARY = [
   { key: 'documents', icon: <FileTextOutlined />, label: '资料' },
   { key: 'chat', icon: <MessageOutlined />, label: '问答' },
   { key: 'memory', icon: <BookOutlined />, label: '记忆' },
+  { key: 'voice', icon: <AudioOutlined />, label: '语音练习' },
 ]
 
 const ADVANCED = [
