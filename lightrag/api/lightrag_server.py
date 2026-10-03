@@ -489,7 +489,11 @@ def create_app(args):
                 else:  # openai and compatible
                     from lightrag.llm.openai import openai_embed
 
-                    embed_dimensions = dimensions if dimensions and "qwen" in (model or "").lower() else None
+                    embed_dimensions = (
+                        dimensions
+                        if dimensions and "qwen" in (model or "").lower()
+                        else None
+                    )
                     return await openai_embed(
                         texts,
                         model=model,
@@ -551,7 +555,12 @@ def create_app(args):
     # Configure rerank function based on args.rerank_bindingparameter
     rerank_model_func = None
     if args.rerank_binding != "null":
-        from lightrag.rerank import cohere_rerank, jina_rerank, ali_rerank, siliconflow_rerank
+        from lightrag.rerank import (
+            cohere_rerank,
+            jina_rerank,
+            ali_rerank,
+            siliconflow_rerank,
+        )
 
         # Map rerank binding to corresponding function
         rerank_functions = {

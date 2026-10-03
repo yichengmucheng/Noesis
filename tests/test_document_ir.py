@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 import pytest
 
-from lightrag.product_document_ir import DocumentIR, EvidenceRef, SourceUnit, checksum_of
+from lightrag.product_document_ir import (
+    DocumentIR,
+    EvidenceRef,
+    SourceUnit,
+    checksum_of,
+)
 
 
 def _sample() -> DocumentIR:
@@ -11,7 +16,13 @@ def _sample() -> DocumentIR:
         page_number=3,
         content="第三页",
         children=[
-            SourceUnit(unit_id="p1-t", unit_type="text", page_number=3, content="节温器打不开", bbox=None),
+            SourceUnit(
+                unit_id="p1-t",
+                unit_type="text",
+                page_number=3,
+                content="节温器打不开",
+                bbox=None,
+            ),
         ],
     )
     section = SourceUnit(
@@ -24,13 +35,23 @@ def _sample() -> DocumentIR:
                 unit_type="table",
                 section_path=["维护手册", "冷却系统"],
                 children=[
-                    SourceUnit(unit_id="s1-c1", unit_type="cell", section_path=["维护手册", "冷却系统"], cell_range="B2", content="蜡包失效"),
+                    SourceUnit(
+                        unit_id="s1-c1",
+                        unit_type="cell",
+                        section_path=["维护手册", "冷却系统"],
+                        cell_range="B2",
+                        content="蜡包失效",
+                    ),
                 ],
             )
         ],
     )
-    slide = SourceUnit(unit_id="sl2", unit_type="slide", slide_number=2, content="排查顺序")
-    sheet = SourceUnit(unit_id="sheet-故障", unit_type="sheet", sheet_name="故障清单", content="表头")
+    slide = SourceUnit(
+        unit_id="sl2", unit_type="slide", slide_number=2, content="排查顺序"
+    )
+    sheet = SourceUnit(
+        unit_id="sheet-故障", unit_type="sheet", sheet_name="故障清单", content="表头"
+    )
     return DocumentIR(
         document_id="doc-1",
         version_id="ver-1",

@@ -5,7 +5,12 @@ import json
 import numpy as np
 
 from lightrag.chunk_hierarchy import assign_parents, count_tokens, split_token_windows
-from lightrag.index_manifest import compatibility_error, rebuild_index, run_index_rebuild, save_manifest
+from lightrag.index_manifest import (
+    compatibility_error,
+    rebuild_index,
+    run_index_rebuild,
+    save_manifest,
+)
 from lightrag.product_db import SqliteStore
 from lightrag.product_document_ir import DocumentIR, SourceUnit
 from lightrag.product_parse import chunks_from_document
@@ -58,26 +63,30 @@ def test_query_routes_do_not_call_model_for_exact_or_factual():
         raise AssertionError(prompt)
 
     async def run():
-        exact = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "合同编号 HT-2025-1107", llm=llm
-        )
-        dated = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "2024年3月的会议纪要放在哪", llm=llm
-        )
-        named = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "林知夏是谁", llm=llm
-        )
-        factual = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "光合作用产生葡萄糖", llm=llm
-        )
-        vague = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan("这个怎么办")
-        compared = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "比较密封圈老化和安装偏心对泄漏的影响"
-        )
-        coref = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
-            "它要停机吗", history=["密封圈的更换步骤"], llm=llm
-        )
-        weak = await __import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan(
+        exact = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("合同编号 HT-2025-1107", llm=llm)
+        dated = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("2024年3月的会议纪要放在哪", llm=llm)
+        named = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("林知夏是谁", llm=llm)
+        factual = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("光合作用产生葡萄糖", llm=llm)
+        vague = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("这个怎么办")
+        compared = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("比较密封圈老化和安装偏心对泄漏的影响")
+        coref = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("它要停机吗", history=["密封圈的更换步骤"], llm=llm)
+        weak = await __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan(
             "光合作用的原理是什么",
             llm=lambda prompt: json.dumps(
                 {
@@ -96,11 +105,21 @@ def test_query_routes_do_not_call_model_for_exact_or_factual():
 
     exact, dated, named, factual, vague, compared, coref, weak = asyncio.run(run())
     assert calls["n"] == 0
-    assert exact["route"] == "exact" and exact["variants"] == ["合同编号 HT-2025-1107"] and exact["hyde_text"] == ""
+    assert (
+        exact["route"] == "exact"
+        and exact["variants"] == ["合同编号 HT-2025-1107"]
+        and exact["hyde_text"] == ""
+    )
     assert dated["route"] == "exact" and dated["llm_used"] is False
     assert named["route"] == "exact"
-    assert factual["route"] == "factual" and factual["llm_used"] is False and factual["variants"] == ["光合作用产生葡萄糖"]
-    assert vague["fallback_reason"] == "llm_unavailable" and vague["variants"] == ["这个怎么办"]
+    assert (
+        factual["route"] == "factual"
+        and factual["llm_used"] is False
+        and factual["variants"] == ["光合作用产生葡萄糖"]
+    )
+    assert vague["fallback_reason"] == "llm_unavailable" and vague["variants"] == [
+        "这个怎么办"
+    ]
     assert compared["route"] == "subquestions"
     assert 2 <= len(compared["subquestions"]) <= 4
     assert "密封圈的更换步骤" in coref["standalone_query"]
@@ -115,7 +134,11 @@ def test_invalid_llm_plan_falls_back_to_original_query():
         del prompt
         return "不是 JSON"
 
-    plan = asyncio.run(__import__("lightrag.query_plan", fromlist=["build_query_plan"]).build_query_plan("这个怎么办", llm=llm))
+    plan = asyncio.run(
+        __import__(
+            "lightrag.query_plan", fromlist=["build_query_plan"]
+        ).build_query_plan("这个怎么办", llm=llm)
+    )
     assert plan["variants"] == ["这个怎么办"]
     assert plan["hyde_text"] == ""
     assert plan["fallback_reason"] == "llm_invalid"
@@ -129,14 +152,26 @@ def test_parent_child_citation_points_at_the_small_chunk():
         source_name="手册.md",
         source_type="markdown",
         checksum="abc",
-        units=[SourceUnit(unit_id="s1", unit_type="section", content=body, section_path=["冷却系统"])],
+        units=[
+            SourceUnit(
+                unit_id="s1",
+                unit_type="section",
+                content=body,
+                section_path=["冷却系统"],
+            )
+        ],
     )
-    chunks = chunks_from_document(document, "user-a", "kb-a", "doc-h", chunk_size=250, chunk_overlap=45)
+    chunks = chunks_from_document(
+        document, "user-a", "kb-a", "doc-h", chunk_size=250, chunk_overlap=45
+    )
     children, parents = assign_parents(chunks, "手册.md", "doc-h")
     assert parents
     assert all("parent_content" not in child for child in children)
     assert all(child["parent_id"] == parents[0]["parent_id"] for child in children)
-    assert parents[0]["content"] not in {child["content"] for child in children} or len(children) == 1
+    assert (
+        parents[0]["content"] not in {child["content"] for child in children}
+        or len(children) == 1
+    )
     for child in children:
         assert child["index_text"].startswith("手册.md")
         assert "冷却系统" in child["index_text"]
@@ -147,22 +182,37 @@ def test_parent_child_citation_points_at_the_small_chunk():
     windows = split_token_windows("乙" * 800)
     assert all(180 <= count_tokens(item) <= 350 for item in windows[:-1])
     assert count_tokens(windows[-1]) <= 350
-    selected, contexts = aggregate_parents(children, {item["parent_id"]: item for item in parents}, max_children=8)
+    selected, contexts = aggregate_parents(
+        children, {item["parent_id"]: item for item in parents}, max_children=8
+    )
     assert contexts[0]["chunk_ids"] == [item["chunk_id"] for item in selected]
     assert selected[0]["content"] != contexts[0]["content"] or len(children) == 1
     assert "parent_content" not in selected[0]
 
 
 def test_rerank_pool_is_independent_of_final_top_n():
-    hits = [{"chunk_id": f"c{index}", "content": f"片段{index}", "doc_name": "手册.md", "raw_score": 0.2} for index in range(20)]
+    hits = [
+        {
+            "chunk_id": f"c{index}",
+            "content": f"片段{index}",
+            "doc_name": "手册.md",
+            "raw_score": 0.2,
+        }
+        for index in range(20)
+    ]
     seen = {}
 
     async def fake(**kwargs):
         seen["documents"] = len(kwargs["documents"])
         seen["top_n"] = kwargs["top_n"]
-        return [{"index": index, "relevance_score": 0.8} for index in range(len(kwargs["documents"]))]
+        return [
+            {"index": index, "relevance_score": 0.8}
+            for index in range(len(kwargs["documents"]))
+        ]
 
-    ordered, info = asyncio.run(_rerank("原始问题", hits, top_k=5, pool_size=40, rerank_func=fake))
+    ordered, info = asyncio.run(
+        _rerank("原始问题", hits, top_k=5, pool_size=40, rerank_func=fake)
+    )
     assert seen["documents"] == 20
     assert seen["top_n"] == 20
     assert info["pool_size"] == 40
@@ -185,7 +235,9 @@ def test_path_bundle_keeps_bridge_and_rejects_low_path(monkeypatch):
         "unit_id": "t0001",
         "owner_id": "user-a",
         "kb_id": "kb-a",
-        "evidence_refs": [{"chunk_id": "doc-a-c0001", "unit_id": "t0001", "document_id": "doc-a"}],
+        "evidence_refs": [
+            {"chunk_id": "doc-a-c0001", "unit_id": "t0001", "document_id": "doc-a"}
+        ],
     }
     answer = {
         "chunk_id": "doc-b-c0001",
@@ -198,13 +250,20 @@ def test_path_bundle_keeps_bridge_and_rejects_low_path(monkeypatch):
         "unit_id": "t0001",
         "owner_id": "user-a",
         "kb_id": "kb-a",
-        "evidence_refs": [{"chunk_id": "doc-b-c0001", "unit_id": "t0001", "document_id": "doc-b"}],
+        "evidence_refs": [
+            {"chunk_id": "doc-b-c0001", "unit_id": "t0001", "document_id": "doc-b"}
+        ],
     }
     bundles = path_bundles([bridge, answer])
     assert len(bundles) == 1
-    assert {item["chunk_id"] for item in bundles[0]["members"]} == {"doc-a-c0001", "doc-b-c0001"}
+    assert {item["chunk_id"] for item in bundles[0]["members"]} == {
+        "doc-a-c0001",
+        "doc-b-c0001",
+    }
     low = dict(bundles[0])
-    low.update({"rerank_score": 0.01, "reranked": True, "score": 0.01, "raw_score": 0.9})
+    low.update(
+        {"rerank_score": 0.01, "reranked": True, "score": 0.01, "raw_score": 0.9}
+    )
     annotate_admission(low, "graph")
     assert filter_by_threshold([low], 0.2) == []
     high = dict(bundles[0])
@@ -230,7 +289,12 @@ def test_changed_reranker_does_not_reuse_old_floor(monkeypatch):
     monkeypatch.setenv("RERANK_MODEL", "some-other-reranker")
     monkeypatch.setenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")
     monkeypatch.setenv("EMBEDDING_DIM", "1024")
-    item = {"reranked": True, "rerank_score": 0.0115, "score": 0.0115, "ranking_score": 0.0115}
+    item = {
+        "reranked": True,
+        "rerank_score": 0.0115,
+        "score": 0.0115,
+        "ranking_score": 0.0115,
+    }
     annotate_admission(item, "vector")
     assert item["admission_score"] is None
     assert item["admission_signal"] == "rerank_rebinding_required"
@@ -244,7 +308,9 @@ def test_model_mismatch_blocks_old_vectors(tmp_path, monkeypatch):
     monkeypatch.setenv("RETRIEVAL_PROFILE", "ci")
     working = tmp_path / "rag"
     working.mkdir()
-    (working / "vdb_chunks.json").write_text('{"embedding_dim": 1024, "data": []}', encoding="utf-8")
+    (working / "vdb_chunks.json").write_text(
+        '{"embedding_dim": 1024, "data": []}', encoding="utf-8"
+    )
     save_manifest(working, 1024, ["doc-1-c0001"])
     monkeypatch.setenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 

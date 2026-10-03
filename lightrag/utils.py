@@ -53,6 +53,7 @@ def _json_default(value: Any) -> Any:
         return value.tolist()
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
+
 # Global import for pypinyin with startup-time logging
 try:
     import pypinyin
@@ -2280,7 +2281,10 @@ class TokenTracker:
             f"Total tokens: {usage['total_tokens']}"
         )
 
-def calculate_time_weight(created_at: Any, now: float = None, half_life_days: float = 90) -> float:
+
+def calculate_time_weight(
+    created_at: Any, now: float = None, half_life_days: float = 90
+) -> float:
     """
     计算版本时间权重：时间戳越早（旧版本），权重越低。
     - created_at: 知识创建的Unix时间戳。
@@ -2302,26 +2306,30 @@ def calculate_time_weight(created_at: Any, now: float = None, half_life_days: fl
             created_at = float(created_at)
         except ValueError:
             try:
-                created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+                created_at = datetime.fromisoformat(
+                    created_at.replace("Z", "+00:00")
+                ).timestamp()
             except ValueError:
                 return 1.0
     try:
         created_at = float(created_at)
     except (TypeError, ValueError):
         return 1.0
-    
+
     # 如果 created_at 为 0 或极旧，给予最低权重
     if created_at <= 1e9:  # 大约是2001年之前
         return 0.1
 
     time_diff_seconds = now - created_at
     half_life_seconds = half_life_days * 86400
-    
+
     # 指数衰减公式
     weight = (0.5) ** (time_diff_seconds / half_life_seconds)
-    
+
     # 限制最低和最高权重
     return max(0.1, min(1.0, weight))
+
+
 async def apply_rerank_if_enabled(
     query: str,
     retrieved_docs: list[dict],
@@ -2365,7 +2373,7 @@ async def apply_rerank_if_enabled(
                 or str(doc)
             )
             document_texts.append(content)
-        
+
         # Call the new rerank function that returns index-based results
         rerank_results = await rerank_func(
             query=query,
@@ -2396,9 +2404,11 @@ async def apply_rerank_if_enabled(
                 # ====================== 新增代码块开始 ======================
                 # logger.info(f"Reranked documents: {reranked_docs}")
                 # 进行二次排序：基于时间权重和重要度权重调整最终分数
-                logger.info("Applying secondary ranking based on 'created_at' and 'importance'.")
+                logger.info(
+                    "Applying secondary ranking based on 'created_at' and 'importance'."
+                )
                 now = datetime.now().timestamp()
-                
+
                 for doc in reranked_docs:
                     # 计算时间权重
                     created_at = doc.get("created_at", 0)
@@ -2911,7 +2921,7 @@ def _convert_to_user_format(
         for chunk_id in chunk_ids:  # 遍历拆分后的每个chunk ID
             chunk_info_map[chunk_id] = {
                 "file_path": entity.get("file_path", "unknown_source"),
-                "score": 1
+                "score": 1,
             }
 
     # 2. 处理关系的source_id（同理修正赋值顺序）
@@ -2925,7 +2935,7 @@ def _convert_to_user_format(
                 continue
             chunk_info_map[chunk_id] = {
                 "file_path": relation.get("file_path", "unknown_source"),
-                "score": 1
+                "score": 1,
             }
 
     # 步骤2：处理实体内容（修正赋值顺序）
@@ -2954,7 +2964,9 @@ def _convert_to_user_format(
         # 拆分多chunk ID
         chunk_ids = [cid.strip() for cid in source_id_str.split(SEP) if cid.strip()]
         # 关系内容拼接
-        relation_text = f"{relation['src_id']}{relation['keywords']}{relation['tgt_id']}"
+        relation_text = (
+            f"{relation['src_id']}{relation['keywords']}{relation['tgt_id']}"
+        )
         # 每个拆分后的chunk ID都关联该关系内容
         for chunk_id in chunk_ids:
             if chunk_id not in relation_chunk_map:
@@ -2964,15 +2976,17 @@ def _convert_to_user_format(
     # 步骤4：合并逻辑（覆盖所有实体/关系的source_id，避免遗漏）
     final_result = []
     # 收集所有涉及的chunk_id（实体的source_id + 关系的source_id）
-    all_related_chunk_ids = set(entity_chunk_map.keys()).union(set(relation_chunk_map.keys()))
-    
+    all_related_chunk_ids = set(entity_chunk_map.keys()).union(
+        set(relation_chunk_map.keys())
+    )
+
     # 遍历所有相关的chunk_id
     for chunk_id in all_related_chunk_ids:
         # 实体内容（无则为空字符串）
         entity_context = entity_chunk_map.get(chunk_id, "")
         # 关系内容（无则为空字符串）
         relation_context = relation_chunk_map.get(chunk_id, "")
-        
+
         # 核心：实体+关系直接拼接（无换行，空内容自动忽略）
         total_context = entity_context + relation_context
         # 核心判断：context为空则跳过，不添加到final_result
@@ -2980,13 +2994,17 @@ def _convert_to_user_format(
             continue
         # 获取file_path（从重构后的chunk_info_map中取，兜底为unknown_source）
         file_path = chunk_info_map.get(chunk_id, {}).get("file_path", "unknown_source")
-        
-        final_result.append({
-            "content": total_context,
-            "file_path": file_path,
-            "chunk_id": chunk_id,
-            "score": chunk_info_map.get(chunk_id, {}).get("score", 1)  # 固定为1，无则默认1
-        })
+
+        final_result.append(
+            {
+                "content": total_context,
+                "file_path": file_path,
+                "chunk_id": chunk_id,
+                "score": chunk_info_map.get(chunk_id, {}).get(
+                    "score", 1
+                ),  # 固定为1，无则默认1
+            }
+        )
 
     return {
         # "entities": formatted_entities,

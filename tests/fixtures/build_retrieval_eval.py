@@ -22,7 +22,19 @@ def doc(doc_id, name, chunks, kb=KB, owner=OWNER):
     }
 
 
-def question(qid, split, track, query, answerable, docs, units, kb=KB, owner=OWNER, multihop=False, path_names=None):
+def question(
+    qid,
+    split,
+    track,
+    query,
+    answerable,
+    docs,
+    units,
+    kb=KB,
+    owner=OWNER,
+    multihop=False,
+    path_names=None,
+):
     return {
         "id": qid,
         "split": split,
@@ -39,58 +51,234 @@ def question(qid, split, track, query, answerable, docs, units, kb=KB, owner=OWN
 
 
 documents = [
-    doc("doc-edu", "resume.txt", [("t0001", "林知夏2018至2022年就读津门财经大学信息管理专业，导师是周衡。")]),
-    doc("doc-cook", "pork.txt", [("t0001", "家常红烧肉先焯水，再放酱油和冰糖炖四十分钟。")]),
+    doc(
+        "doc-edu",
+        "resume.txt",
+        [("t0001", "林知夏2018至2022年就读津门财经大学信息管理专业，导师是周衡。")],
+    ),
+    doc(
+        "doc-cook",
+        "pork.txt",
+        [("t0001", "家常红烧肉先焯水，再放酱油和冰糖炖四十分钟。")],
+    ),
     doc("doc-spare", "ribs.txt", [("t0001", "糖醋排骨先炸至外酥，再淋糖醋汁翻炒。")]),
-    doc("doc-trip", "hangzhou.txt", [("t0001", "西湖在杭州，春季可沿苏堤骑行，游船从断桥出发。")]),
-    doc("doc-filter", "filter.txt", [("t0001", "净水器滤芯型号JW-220，每九十天更换一次。")]),
-    doc("doc-clinic", "clinic.txt", [("t0001", "病历写明对青霉素过敏，就诊号MZ-3301。")]),
-    doc("doc-pet", "pet.txt", [("t0001", "狗狗豆豆于2024年11月2日接种狂犬疫苗，芯片号P8891。")]),
-    doc("doc-invoice", "invoice.txt", [("t0001", "发票号码INV-88421，税额一百二十元，销方北窗书店。")]),
-    doc("doc-budget", "budget.txt", [("t0001", "三月家庭预算里通勤支出列为四百元，科目代码YS-0312。")]),
-    doc("doc-plant", "plant.txt", [("t0001", "阳台绿萝每星期三浇水一次，花盆放在朝南窗台。")]),
-    doc("doc-school", "school.txt", [("t0001", "档案记载求职者在津门财经院校完成本科信息管理学业，入学年份为二零一八。")]),
-    doc("doc-meet", "meeting.txt", [
-        ("t0001", "极光项目安排评审会。"),
-        ("t0002", "评审会位于三号会议室，时间是三月十二日下午三点。"),
-    ]),
-    doc("doc-river", "river.txt", [("t0001", "长江发源于唐古拉山，全长约六千三百公里。")]),
+    doc(
+        "doc-trip",
+        "hangzhou.txt",
+        [("t0001", "西湖在杭州，春季可沿苏堤骑行，游船从断桥出发。")],
+    ),
+    doc(
+        "doc-filter",
+        "filter.txt",
+        [("t0001", "净水器滤芯型号JW-220，每九十天更换一次。")],
+    ),
+    doc(
+        "doc-clinic", "clinic.txt", [("t0001", "病历写明对青霉素过敏，就诊号MZ-3301。")]
+    ),
+    doc(
+        "doc-pet",
+        "pet.txt",
+        [("t0001", "狗狗豆豆于2024年11月2日接种狂犬疫苗，芯片号P8891。")],
+    ),
+    doc(
+        "doc-invoice",
+        "invoice.txt",
+        [("t0001", "发票号码INV-88421，税额一百二十元，销方北窗书店。")],
+    ),
+    doc(
+        "doc-budget",
+        "budget.txt",
+        [("t0001", "三月家庭预算里通勤支出列为四百元，科目代码YS-0312。")],
+    ),
+    doc(
+        "doc-plant",
+        "plant.txt",
+        [("t0001", "阳台绿萝每星期三浇水一次，花盆放在朝南窗台。")],
+    ),
+    doc(
+        "doc-school",
+        "school.txt",
+        [
+            (
+                "t0001",
+                "档案记载求职者在津门财经院校完成本科信息管理学业，入学年份为二零一八。",
+            )
+        ],
+    ),
+    doc(
+        "doc-meet",
+        "meeting.txt",
+        [
+            ("t0001", "极光项目安排评审会。"),
+            ("t0002", "评审会位于三号会议室，时间是三月十二日下午三点。"),
+        ],
+    ),
+    doc(
+        "doc-river",
+        "river.txt",
+        [("t0001", "长江发源于唐古拉山，全长约六千三百公里。")],
+    ),
     doc("doc-bridge", "bridge.txt", [("t0001", "长江大桥位于南京，桥面可以通汽车。")]),
-    doc("doc-bill-a", "bill-a.txt", [("t0001", "账单ZD-77821金额为三百元，收款方是晨光文具。")]),
-    doc("doc-bill-b", "bill-b.txt", [("t0001", "账单ZD-77822金额为三百五十元，收款方是晨光文具。")]),
-    doc("doc-intern", "intern.txt", [("t0001", "林知夏2023年在港湾物流公司实习六个月，岗位是仓储数据核对。")]),
-    doc("doc-fish", "fish.txt", [("t0001", "清蒸鲈鱼需要姜丝和料酒，蒸八分钟后淋热油。")]),
-    doc("doc-chengdu", "chengdu.txt", [("t0001", "十月去成都大熊猫基地，早上八点半入园，门票凭身份证换票。")]),
-    doc("doc-print", "print.txt", [("t0001", "采购合同编号HT-2025-1107，乙方青柠印刷，价款一万二千。")]),
-    doc("doc-ht18", "ht18.txt", [("t0001", "服务合同编号HT-2024-0918，甲方海盐工作室，价款八千元。")]),
-    doc("doc-ht19", "ht19.txt", [("t0001", "补充协议编号HT-2024-0919，甲方海盐工作室，价款九千元。")]),
-    doc("doc-air", "air.txt", [("t0001", "空气净化器型号AP-9，滤网每半年清洗，指示灯变红时更换。")]),
-    doc("doc-cycle", "cycle.txt", [("t0001", "水循环包括蒸发、凝结和降水三个环节，课本页码是第48页。")]),
-    doc("doc-guitar", "guitar.txt", [("t0001", "吉他练习记录写着每周三晚上练习扫弦二十分钟。")]),
-    doc("doc-policy", "policy.txt", [("t0001", "意外险保单POL-55290，受益人写的是林知夏，保额三十万。")]),
-    doc("doc-syrup", "syrup.txt", [("t0001", "糕点上色使用葡萄糖浆，烘焙温度一百八十度。")]),
-    doc("doc-bio", "bio.txt", [
-        ("t0001", "光合作用产生葡萄糖。"),
-        ("t0002", "葡萄糖为细胞呼吸提供能量。"),
-    ]),
-    doc("doc-sweet", "sweet.txt", [("t0001", "葡萄糖导致甜味增加。")], kb=OTHER, owner=OWNER_B),
+    doc(
+        "doc-bill-a",
+        "bill-a.txt",
+        [("t0001", "账单ZD-77821金额为三百元，收款方是晨光文具。")],
+    ),
+    doc(
+        "doc-bill-b",
+        "bill-b.txt",
+        [("t0001", "账单ZD-77822金额为三百五十元，收款方是晨光文具。")],
+    ),
+    doc(
+        "doc-intern",
+        "intern.txt",
+        [("t0001", "林知夏2023年在港湾物流公司实习六个月，岗位是仓储数据核对。")],
+    ),
+    doc(
+        "doc-fish",
+        "fish.txt",
+        [("t0001", "清蒸鲈鱼需要姜丝和料酒，蒸八分钟后淋热油。")],
+    ),
+    doc(
+        "doc-chengdu",
+        "chengdu.txt",
+        [("t0001", "十月去成都大熊猫基地，早上八点半入园，门票凭身份证换票。")],
+    ),
+    doc(
+        "doc-print",
+        "print.txt",
+        [("t0001", "采购合同编号HT-2025-1107，乙方青柠印刷，价款一万二千。")],
+    ),
+    doc(
+        "doc-ht18",
+        "ht18.txt",
+        [("t0001", "服务合同编号HT-2024-0918，甲方海盐工作室，价款八千元。")],
+    ),
+    doc(
+        "doc-ht19",
+        "ht19.txt",
+        [("t0001", "补充协议编号HT-2024-0919，甲方海盐工作室，价款九千元。")],
+    ),
+    doc(
+        "doc-air",
+        "air.txt",
+        [("t0001", "空气净化器型号AP-9，滤网每半年清洗，指示灯变红时更换。")],
+    ),
+    doc(
+        "doc-cycle",
+        "cycle.txt",
+        [("t0001", "水循环包括蒸发、凝结和降水三个环节，课本页码是第48页。")],
+    ),
+    doc(
+        "doc-guitar",
+        "guitar.txt",
+        [("t0001", "吉他练习记录写着每周三晚上练习扫弦二十分钟。")],
+    ),
+    doc(
+        "doc-policy",
+        "policy.txt",
+        [("t0001", "意外险保单POL-55290，受益人写的是林知夏，保额三十万。")],
+    ),
+    doc(
+        "doc-syrup",
+        "syrup.txt",
+        [("t0001", "糕点上色使用葡萄糖浆，烘焙温度一百八十度。")],
+    ),
+    doc(
+        "doc-bio",
+        "bio.txt",
+        [
+            ("t0001", "光合作用产生葡萄糖。"),
+            ("t0002", "葡萄糖为细胞呼吸提供能量。"),
+        ],
+    ),
+    doc(
+        "doc-sweet",
+        "sweet.txt",
+        [("t0001", "葡萄糖导致甜味增加。")],
+        kb=OTHER,
+        owner=OWNER_B,
+    ),
 ]
 
 relations = [
-    {"src": "极光项目", "relation": "安排", "tgt": "评审会", "document_id": "doc-meet", "unit_id": "t0001", "kb_id": KB, "owner_id": OWNER},
-    {"src": "评审会", "relation": "位于", "tgt": "三号会议室", "document_id": "doc-meet", "unit_id": "t0002", "kb_id": KB, "owner_id": OWNER},
-    {"src": "光合作用", "relation": "产生", "tgt": "葡萄糖", "document_id": "doc-bio", "unit_id": "t0001", "kb_id": KB, "owner_id": OWNER},
-    {"src": "葡萄糖", "relation": "提供", "tgt": "能量", "document_id": "doc-bio", "unit_id": "t0002", "kb_id": KB, "owner_id": OWNER},
-    {"src": "葡萄糖", "relation": "导致", "tgt": "甜味", "document_id": "doc-sweet", "unit_id": "t0001", "kb_id": OTHER, "owner_id": OWNER_B},
+    {
+        "src": "极光项目",
+        "relation": "安排",
+        "tgt": "评审会",
+        "document_id": "doc-meet",
+        "unit_id": "t0001",
+        "kb_id": KB,
+        "owner_id": OWNER,
+    },
+    {
+        "src": "评审会",
+        "relation": "位于",
+        "tgt": "三号会议室",
+        "document_id": "doc-meet",
+        "unit_id": "t0002",
+        "kb_id": KB,
+        "owner_id": OWNER,
+    },
+    {
+        "src": "光合作用",
+        "relation": "产生",
+        "tgt": "葡萄糖",
+        "document_id": "doc-bio",
+        "unit_id": "t0001",
+        "kb_id": KB,
+        "owner_id": OWNER,
+    },
+    {
+        "src": "葡萄糖",
+        "relation": "提供",
+        "tgt": "能量",
+        "document_id": "doc-bio",
+        "unit_id": "t0002",
+        "kb_id": KB,
+        "owner_id": OWNER,
+    },
+    {
+        "src": "葡萄糖",
+        "relation": "导致",
+        "tgt": "甜味",
+        "document_id": "doc-sweet",
+        "unit_id": "t0001",
+        "kb_id": OTHER,
+        "owner_id": OWNER_B,
+    },
 ]
 
 questions = []
 
 
-def add(split, track, query, docs, units, answerable=True, kb=KB, owner=OWNER, multihop=False, path_names=None):
-    questions.append(question(
-        f"q{len(questions)+1:03d}", split, track, query, answerable, docs, units, kb, owner, multihop, path_names,
-    ))
+def add(
+    split,
+    track,
+    query,
+    docs,
+    units,
+    answerable=True,
+    kb=KB,
+    owner=OWNER,
+    multihop=False,
+    path_names=None,
+):
+    questions.append(
+        question(
+            f"q{len(questions)+1:03d}",
+            split,
+            track,
+            query,
+            answerable,
+            docs,
+            units,
+            kb,
+            owner,
+            multihop,
+            path_names,
+        )
+    )
 
 
 lexical = [
@@ -164,26 +352,66 @@ for split, query, docs, units in semantic:
 
 add("calibration", "hard_negative", "家常红烧肉先焯水还是先炸", ["doc-cook"], ["t0001"])
 add("calibration", "hard_negative", "糖醋排骨淋的是什么汁", ["doc-spare"], ["t0001"])
-add("holdout", "hard_negative", "服务合同编号HT-2024-0918价款八千元吗", ["doc-ht18"], ["t0001"])
-add("holdout", "hard_negative", "补充协议编号HT-2024-0919价款是多少", ["doc-ht19"], ["t0001"])
+add(
+    "holdout",
+    "hard_negative",
+    "服务合同编号HT-2024-0918价款八千元吗",
+    ["doc-ht18"],
+    ["t0001"],
+)
+add(
+    "holdout",
+    "hard_negative",
+    "补充协议编号HT-2024-0919价款是多少",
+    ["doc-ht19"],
+    ["t0001"],
+)
 
 add("calibration", "near_id", "账单ZD-77821金额是多少", ["doc-bill-a"], ["t0001"])
-add("calibration", "near_id", "账单ZD-77822的收款方金额是多少", ["doc-bill-b"], ["t0001"])
+add(
+    "calibration",
+    "near_id",
+    "账单ZD-77822的收款方金额是多少",
+    ["doc-bill-b"],
+    ["t0001"],
+)
 add("holdout", "near_id", "编号HT-2024-0918的价款", ["doc-ht18"], ["t0001"])
 add("holdout", "near_id", "编号HT-2024-0919的价款", ["doc-ht19"], ["t0001"])
 
 add("calibration", "same_name", "长江发源于哪里", ["doc-river"], ["t0001"])
 add("calibration", "same_name", "长江大桥位于哪座城市", ["doc-bridge"], ["t0001"])
-add("holdout", "same_name", "细胞呼吸的能量由光合作用产生的糖提供吗", ["doc-bio"], ["t0001", "t0002"])
-add("holdout", "same_name", "糕点上色使用葡萄糖浆时烘焙温度是多少", ["doc-syrup"], ["t0001"])
-
 add(
-    "calibration", "multihop", "极光项目安排的评审会位于哪里",
-    ["doc-meet"], ["t0001", "t0002"], multihop=True, path_names=["极光项目", "评审会", "三号会议室"],
+    "holdout",
+    "same_name",
+    "细胞呼吸的能量由光合作用产生的糖提供吗",
+    ["doc-bio"],
+    ["t0001", "t0002"],
 )
 add(
-    "holdout", "multihop", "光合作用如何为细胞提供能量",
-    ["doc-bio"], ["t0001", "t0002"], multihop=True, path_names=["光合作用", "葡萄糖", "能量"],
+    "holdout",
+    "same_name",
+    "糕点上色使用葡萄糖浆时烘焙温度是多少",
+    ["doc-syrup"],
+    ["t0001"],
+)
+
+add(
+    "calibration",
+    "multihop",
+    "极光项目安排的评审会位于哪里",
+    ["doc-meet"],
+    ["t0001", "t0002"],
+    multihop=True,
+    path_names=["极光项目", "评审会", "三号会议室"],
+)
+add(
+    "holdout",
+    "multihop",
+    "光合作用如何为细胞提供能量",
+    ["doc-bio"],
+    ["t0001", "t0002"],
+    multihop=True,
+    path_names=["光合作用", "葡萄糖", "能量"],
 )
 
 unanswerable = [
@@ -221,7 +449,14 @@ unanswerable = [
     "信鸽公棚的归巢名次",
 ]
 for index, query in enumerate(unanswerable):
-    add("calibration" if index < 16 else "holdout", "unanswerable", query, [], [], answerable=False)
+    add(
+        "calibration" if index < 16 else "holdout",
+        "unanswerable",
+        query,
+        [],
+        [],
+        answerable=False,
+    )
 
 
 def tokens(text):
@@ -242,6 +477,7 @@ for item in questions:
         failures.append((item["id"], item["query"], sorted(shared)))
 
 import difflib
+
 cal = [item["query"] for item in questions if item["split"] == "calibration"]
 hold = [item["query"] for item in questions if item["split"] == "holdout"]
 close = []
@@ -273,5 +509,12 @@ if failures or close or leaks:
     raise SystemExit(1)
 
 target = Path(__file__).with_name("retrieval_eval.json")
-target.write_text(json.dumps({"documents": documents, "relations": relations, "questions": questions}, ensure_ascii=False, indent=2), encoding="utf-8")
+target.write_text(
+    json.dumps(
+        {"documents": documents, "relations": relations, "questions": questions},
+        ensure_ascii=False,
+        indent=2,
+    ),
+    encoding="utf-8",
+)
 print(target)

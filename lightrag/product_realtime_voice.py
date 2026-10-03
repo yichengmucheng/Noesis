@@ -71,7 +71,10 @@ class AliyunNlsConfig:
 
     @property
     def configured(self) -> bool:
-        return bool(self.app_key and (self.token or (self.access_key_id and self.access_key_secret)))
+        return bool(
+            self.app_key
+            and (self.token or (self.access_key_id and self.access_key_secret))
+        )
 
 
 @dataclass(frozen=True)
@@ -95,7 +98,12 @@ class AliyunNlsTtsConfig:
 
     @classmethod
     def from_env(cls) -> "AliyunNlsTtsConfig":
-        region = os.getenv("ALIYUN_TTS_REGION", os.getenv("ALIYUN_NLS_REGION", "cn-shanghai")).strip() or "cn-shanghai"
+        region = (
+            os.getenv(
+                "ALIYUN_TTS_REGION", os.getenv("ALIYUN_NLS_REGION", "cn-shanghai")
+            ).strip()
+            or "cn-shanghai"
+        )
         gateway = os.getenv(
             "ALIYUN_TTS_GATEWAY",
             os.getenv("ALIYUN_NLS_GATEWAY", f"nls-gateway-{region}.aliyuncs.com"),
@@ -107,10 +115,16 @@ class AliyunNlsTtsConfig:
         return cls(
             access_key_id=os.getenv("ALIYUN_ACCESS_KEY_ID", "").strip(),
             access_key_secret=os.getenv("ALIYUN_ACCESS_KEY_SECRET", "").strip(),
-            app_key=(os.getenv("ALIYUN_TTS_APP_KEY", "").strip() or os.getenv("ALIYUN_NLS_APP_KEY", "").strip()),
+            app_key=(
+                os.getenv("ALIYUN_TTS_APP_KEY", "").strip()
+                or os.getenv("ALIYUN_NLS_APP_KEY", "").strip()
+            ),
             region=region,
             gateway=gateway,
-            token=(os.getenv("ALIYUN_TTS_TOKEN", "").strip() or os.getenv("ALIYUN_NLS_TOKEN", "").strip()),
+            token=(
+                os.getenv("ALIYUN_TTS_TOKEN", "").strip()
+                or os.getenv("ALIYUN_NLS_TOKEN", "").strip()
+            ),
             voice=os.getenv("ALIYUN_TTS_VOICE", "siyue").strip() or "siyue",
             audio_format=os.getenv("ALIYUN_TTS_FORMAT", "mp3").strip().lower() or "mp3",
             sample_rate=sample_rate if sample_rate in {8000, 16000, 24000} else 16000,
@@ -118,7 +132,10 @@ class AliyunNlsTtsConfig:
 
     @property
     def configured(self) -> bool:
-        return bool(self.app_key and (self.token or (self.access_key_id and self.access_key_secret)))
+        return bool(
+            self.app_key
+            and (self.token or (self.access_key_id and self.access_key_secret))
+        )
 
 
 def _percent(value: str) -> str:
@@ -127,8 +144,7 @@ def _percent(value: str) -> str:
 
 def _aliyun_signature(params: dict[str, str], secret: str) -> str:
     canonical = "&".join(
-        f"{_percent(key)}={_percent(params[key])}"
-        for key in sorted(params)
+        f"{_percent(key)}={_percent(params[key])}" for key in sorted(params)
     )
     string_to_sign = "GET&%2F&" + _percent(canonical)
     digest = hmac.new(
@@ -143,7 +159,9 @@ async def create_aliyun_token(config: AliyunNlsConfig) -> str:
     if config.token:
         return config.token
     if not config.access_key_id or not config.access_key_secret:
-        raise RealtimeVoiceError("阿里云实时语音服务尚未配置", code="aliyun_not_configured")
+        raise RealtimeVoiceError(
+            "阿里云实时语音服务尚未配置", code="aliyun_not_configured"
+        )
     cache_key = (config.access_key_id, config.region, config.gateway)
     now = time.time()
     cached = _ALIYUN_TOKEN_CACHE.get(cache_key)
@@ -168,20 +186,28 @@ async def create_aliyun_token(config: AliyunNlsConfig) -> str:
     except httpx.HTTPError as exc:
         if cached and cached[1] > now:
             return cached[0]
-        raise RealtimeVoiceError("阿里云实时语音 Token 获取失败", code="aliyun_token_failed") from exc
+        raise RealtimeVoiceError(
+            "阿里云实时语音 Token 获取失败", code="aliyun_token_failed"
+        ) from exc
     if response.status_code >= 400:
         if response.status_code >= 500 and cached and cached[1] > now:
             return cached[0]
-        raise RealtimeVoiceError("阿里云实时语音 Token 获取失败", code="aliyun_token_failed")
+        raise RealtimeVoiceError(
+            "阿里云实时语音 Token 获取失败", code="aliyun_token_failed"
+        )
     try:
         payload = response.json()
     except ValueError as exc:
-        raise RealtimeVoiceError("阿里云实时语音 Token 返回格式错误", code="aliyun_token_invalid") from exc
+        raise RealtimeVoiceError(
+            "阿里云实时语音 Token 返回格式错误", code="aliyun_token_invalid"
+        ) from exc
     token_payload = payload.get("Token") or {}
     token = str(token_payload.get("Id") or "").strip()
     if not token:
         error_code = str(payload.get("ErrCode") or payload.get("Code") or "").strip()
-        error_message = str(payload.get("ErrMsg") or payload.get("Message") or "").strip()
+        error_message = str(
+            payload.get("ErrMsg") or payload.get("Message") or ""
+        ).strip()
         if error_code == "40020503" or "no permission" in error_message.lower():
             raise RealtimeVoiceError(
                 "阿里云 RAM 用户缺少智能语音交互 NLS 权限",
@@ -197,7 +223,9 @@ async def create_aliyun_token(config: AliyunNlsConfig) -> str:
                 "阿里云 AccessKey Secret 无效",
                 code="aliyun_access_key_invalid",
             )
-        raise RealtimeVoiceError("阿里云实时语音 Token 为空", code="aliyun_token_invalid")
+        raise RealtimeVoiceError(
+            "阿里云实时语音 Token 为空", code="aliyun_token_invalid"
+        )
     try:
         expires_at = float(token_payload.get("ExpireTime") or 0)
     except (TypeError, ValueError):
@@ -230,9 +258,13 @@ def _message(
 
 async def open_aliyun_transcriber(config: AliyunNlsConfig):
     if websockets is None:
-        raise RealtimeVoiceError("实时语音依赖未安装", code="realtime_dependency_missing")
+        raise RealtimeVoiceError(
+            "实时语音依赖未安装", code="realtime_dependency_missing"
+        )
     if not config.configured:
-        raise RealtimeVoiceError("阿里云实时语音服务尚未配置", code="aliyun_not_configured")
+        raise RealtimeVoiceError(
+            "阿里云实时语音服务尚未配置", code="aliyun_not_configured"
+        )
     token = await create_aliyun_token(config)
     task_id = uuid.uuid4().hex
     url = f"wss://{config.gateway}/ws/v1?token={quote(token, safe='')}"
@@ -252,7 +284,9 @@ async def open_aliyun_transcriber(config: AliyunNlsConfig):
             "enable_intermediate_result": True,
             "enable_punctuation_prediction": True,
             "enable_inverse_text_normalization": True,
-            "max_sentence_silence": int(os.getenv("ALIYUN_NLS_MAX_SENTENCE_SILENCE", "800") or 800),
+            "max_sentence_silence": int(
+                os.getenv("ALIYUN_NLS_MAX_SENTENCE_SILENCE", "800") or 800
+            ),
         }
         await socket.send(json.dumps(start, ensure_ascii=False))
         try:
@@ -281,7 +315,9 @@ async def open_aliyun_transcriber(config: AliyunNlsConfig):
     except Exception as exc:
         if socket is not None:
             await close_aliyun_socket(socket)
-        raise RealtimeVoiceError("无法连接阿里云实时语音服务", code="aliyun_connect_failed") from exc
+        raise RealtimeVoiceError(
+            "无法连接阿里云实时语音服务", code="aliyun_connect_failed"
+        ) from exc
 
 
 def parse_transcriber_event(raw: str | bytes) -> dict[str, Any] | None:
@@ -322,7 +358,9 @@ def parse_transcriber_event(raw: str | bytes) -> dict[str, Any] | None:
             or ""
         )
         return {
-            "type": "provider_done" if name == "TranscriptionCompleted" else "provider_error",
+            "type": "provider_done"
+            if name == "TranscriptionCompleted"
+            else "provider_error",
             "message": str(status_text),
             "provider_code": str(status_code) if status_code is not None else "",
             "event": name,
@@ -349,16 +387,22 @@ async def close_aliyun_socket(socket: Any) -> None:
         return
 
 
-async def stream_aliyun_speech(text: str, config: AliyunNlsTtsConfig | None = None) -> AsyncIterator[bytes]:
+async def stream_aliyun_speech(
+    text: str, config: AliyunNlsTtsConfig | None = None
+) -> AsyncIterator[bytes]:
     """Stream NLS synthesis audio without buffering the whole answer."""
     if websockets is None:
-        raise RealtimeVoiceError("实时语音依赖未安装", code="realtime_dependency_missing")
+        raise RealtimeVoiceError(
+            "实时语音依赖未安装", code="realtime_dependency_missing"
+        )
     config = config or AliyunNlsTtsConfig.from_env()
     clean = str(text or "").strip()
     if not clean:
         raise RealtimeVoiceError("没有可播放的回答", code="empty_text")
     if not config.configured:
-        raise RealtimeVoiceError("阿里云语音合成服务尚未配置", code="aliyun_tts_not_configured")
+        raise RealtimeVoiceError(
+            "阿里云语音合成服务尚未配置", code="aliyun_tts_not_configured"
+        )
     token = await create_aliyun_token(
         AliyunNlsConfig(
             access_key_id=config.access_key_id,
@@ -374,7 +418,9 @@ async def stream_aliyun_speech(text: str, config: AliyunNlsTtsConfig | None = No
     url = f"wss://{config.gateway}/ws/v1?token={quote(token, safe='')}"
     emitted = False
     try:
-        async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=5) as socket:
+        async with websockets.connect(
+            url, ping_interval=20, ping_timeout=20, close_timeout=5
+        ) as socket:
             start = _message(
                 "StartSynthesis",
                 task_id,
@@ -399,7 +445,10 @@ async def stream_aliyun_speech(text: str, config: AliyunNlsTtsConfig | None = No
                     continue
                 event = parse_transcriber_event(raw)
                 if event and event.get("type") == "provider_error":
-                    raise RealtimeVoiceError(str(event.get("message") or "阿里云语音合成失败"), code="aliyun_tts_failed")
+                    raise RealtimeVoiceError(
+                        str(event.get("message") or "阿里云语音合成失败"),
+                        code="aliyun_tts_failed",
+                    )
                 try:
                     header = (json.loads(raw) or {}).get("header") or {}
                 except (TypeError, ValueError):
@@ -407,11 +456,15 @@ async def stream_aliyun_speech(text: str, config: AliyunNlsTtsConfig | None = No
                 name = str(header.get("name") or "")
                 if name in {"SynthesisCompleted", "TaskFailed", "SynthesisFailed"}:
                     if name != "SynthesisCompleted":
-                        raise RealtimeVoiceError("阿里云语音合成失败", code="aliyun_tts_failed")
+                        raise RealtimeVoiceError(
+                            "阿里云语音合成失败", code="aliyun_tts_failed"
+                        )
                     break
     except RealtimeVoiceError:
         raise
     except Exception as exc:
-        raise RealtimeVoiceError("阿里云语音合成连接失败", code="aliyun_tts_failed") from exc
+        raise RealtimeVoiceError(
+            "阿里云语音合成连接失败", code="aliyun_tts_failed"
+        ) from exc
     if not emitted:
         raise RealtimeVoiceError("阿里云语音合成返回空音频", code="aliyun_tts_empty")

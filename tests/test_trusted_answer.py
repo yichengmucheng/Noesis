@@ -32,7 +32,9 @@ def _pdf(text: str) -> bytes:
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-        f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"endstream",
+        f"<< /Length {len(stream)} >>\nstream\n".encode("ascii")
+        + stream
+        + b"endstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
     header = b"%PDF-1.4\n"
@@ -71,12 +73,18 @@ def test_detail_levels_change_prompt_budget_not_system_rules():
     ]
     prompts = {}
     for level in ("concise", "standard", "detailed"):
-        system, user = build_messages("现在怎么办", contexts, [], None, detail=level, expand_context=True)
+        system, user = build_messages(
+            "现在怎么办", contexts, [], None, detail=level, expand_context=True
+        )
         prompts[level] = user
         assert system == SYSTEM_PROMPT
         assert DETAIL_HINT[level] in user
         assert "节温器打不开" in user
-    assert prompts["concise"].count("父") < prompts["standard"].count("父") < prompts["detailed"].count("父")
+    assert (
+        prompts["concise"].count("父")
+        < prompts["standard"].count("父")
+        < prompts["detailed"].count("父")
+    )
     assert "只写结论" in prompts["concise"]
     assert "80字以内" in prompts["concise"]
     assert "220字以内" in prompts["standard"]
@@ -91,10 +99,13 @@ async def test_follow_up_pronoun_is_rewritten_with_conversation_context():
         async def llm_model_func(self, prompt, **_kwargs):
             assert "Maas百事通" in prompt
             assert "它主要使用了哪些技术" in prompt
-            return json.dumps({
-                "rewrite": "Maas百事通项目主要使用了哪些技术？",
-                "expansions": ["Maas百事通技术架构", "Maas百事通用了什么组件"],
-            }, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "rewrite": "Maas百事通项目主要使用了哪些技术？",
+                    "expansions": ["Maas百事通技术架构", "Maas百事通用了什么组件"],
+                },
+                ensure_ascii=False,
+            )
 
     rewritten, expansions = await rewrite_query(
         Rag(),
@@ -117,7 +128,9 @@ def test_confirmed_memories_use_m_markers_and_do_not_replace_documents():
     assert "[C1]" in user
     assert "[M1] 用户偏好简洁回答" in user
     assert "记忆不能作为原始文档证据" in user
-    applied = apply_memory_markers("资料结论 [C1]，习惯 [M1]", memories, has_documents=True)
+    applied = apply_memory_markers(
+        "资料结论 [C1]，习惯 [M1]", memories, has_documents=True
+    )
     assert "[M1]" in applied["answer"]
     assert CONFLICT_HINT in applied["answer"]
     pending_only = apply_memory_markers("不要用未确认 [M1]", [], has_documents=False)
@@ -128,9 +141,30 @@ def test_confirmed_memories_use_m_markers_and_do_not_replace_documents():
 
 def test_validator_drops_forged_cross_kb_and_stale_versions():
     citations = [
-        {"citation_id": "C1", "chunk_id": "c1", "document_id": "doc-1", "version_id": "v1", "kb_id": "kb", "owner_id": "user-a"},
-        {"citation_id": "C2", "chunk_id": "c2", "document_id": "doc-2", "version_id": "old", "kb_id": "kb", "owner_id": "user-a"},
-        {"citation_id": "C3", "chunk_id": "c3", "document_id": "doc-3", "version_id": "v3", "kb_id": "other", "owner_id": "user-a"},
+        {
+            "citation_id": "C1",
+            "chunk_id": "c1",
+            "document_id": "doc-1",
+            "version_id": "v1",
+            "kb_id": "kb",
+            "owner_id": "user-a",
+        },
+        {
+            "citation_id": "C2",
+            "chunk_id": "c2",
+            "document_id": "doc-2",
+            "version_id": "old",
+            "kb_id": "kb",
+            "owner_id": "user-a",
+        },
+        {
+            "citation_id": "C3",
+            "chunk_id": "c3",
+            "document_id": "doc-3",
+            "version_id": "v3",
+            "kb_id": "other",
+            "owner_id": "user-a",
+        },
     ]
     checked = validate_citations(
         "结论 [C1]，伪造 [C9]，旧版本 [C2]，别的库 [C3]。",
@@ -145,7 +179,9 @@ def test_validator_drops_forged_cross_kb_and_stale_versions():
     assert "[C9]" not in checked["answer"]
     assert "[C2]" not in checked["answer"]
     assert "[C3]" not in checked["answer"]
-    empty = validate_citations("没有引用的猜测", citations, kb_id="kb", owner_id="user-a", retrieved_ids={"c1"})
+    empty = validate_citations(
+        "没有引用的猜测", citations, kb_id="kb", owner_id="user-a", retrieved_ids={"c1"}
+    )
     assert empty["answer"] == REFUSAL
     assert empty["citations"] == []
     assert empty["answerable"] is False
@@ -164,10 +200,22 @@ def test_cache_rejects_index_or_detail_mismatch():
         "index_version": "idx-1",
         "detail": "standard",
     }
-    common = dict(kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen", live_chunk_ids={"c1"}, user_id="user-a")
+    common = dict(
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
+        user_id="user-a",
+    )
     assert cache_entry_usable(entry, index_version="idx-1", detail="standard", **common)
-    assert not cache_entry_usable(entry, index_version="idx-2", detail="standard", **common)
-    assert not cache_entry_usable(entry, index_version="idx-1", detail="detailed", **common)
+    assert not cache_entry_usable(
+        entry, index_version="idx-2", detail="standard", **common
+    )
+    assert not cache_entry_usable(
+        entry, index_version="idx-1", detail="detailed", **common
+    )
 
 
 def test_stream_uses_detail_and_stops_before_a_complete_save():
@@ -285,9 +333,15 @@ async def _events(rag, prepared):
 
 
 def test_source_locations_for_each_format(tmp_path):
-    markdown = parse_bytes("手册.md", "冷却系统\n\n# 冷却系统\n\n节温器打不开\n".encode("utf-8"), document_id="doc-md")
+    markdown = parse_bytes(
+        "手册.md",
+        "冷却系统\n\n# 冷却系统\n\n节温器打不开\n".encode("utf-8"),
+        document_id="doc-md",
+    )
     body = next(unit for unit in markdown.walk() if unit.content == "节温器打不开")
-    view = build_source_view(markdown, doc_name="手册.md", chunk_id="c1", unit_id=body.unit_id)
+    view = build_source_view(
+        markdown, doc_name="手册.md", chunk_id="c1", unit_id=body.unit_id
+    )
     assert view["source_kind"] == "markdown"
     assert view["unit"]["section_path"] == ["冷却系统"]
     assert view["unit"]["line_start"]
@@ -295,14 +349,18 @@ def test_source_locations_for_each_format(tmp_path):
     assert view["preview"]["url"] is None
     assert "file_path" not in view
 
-    note = parse_bytes("note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-txt")
+    note = parse_bytes(
+        "note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-txt"
+    )
     text = build_source_view(note, doc_name="note.txt", chunk_id="c1", unit_id="t0001")
     assert text["unit"]["line_start"] == 1
     assert text["unit"]["page_number"] is None
 
     pdf = parse_bytes("manual.pdf", _pdf("thermostat"), document_id="doc-pdf")
     page = next(unit for unit in pdf.walk() if unit.unit_type == "page")
-    located = build_source_view(pdf, doc_name="manual.pdf", chunk_id="c1", unit_id=page.unit_id)
+    located = build_source_view(
+        pdf, doc_name="manual.pdf", chunk_id="c1", unit_id=page.unit_id
+    )
     assert located["unit"]["page_number"] == 1
     assert located["unit"]["bbox"] is None
     boxed = DocumentIR(
@@ -311,9 +369,19 @@ def test_source_locations_for_each_format(tmp_path):
         source_name="boxed.pdf",
         source_type="pdf",
         checksum="abc",
-        units=[SourceUnit(unit_id="p1", unit_type="page", page_number=2, content="坐标", bbox=[10, 20, 30, 40])],
+        units=[
+            SourceUnit(
+                unit_id="p1",
+                unit_type="page",
+                page_number=2,
+                content="坐标",
+                bbox=[10, 20, 30, 40],
+            )
+        ],
     )
-    box_view = build_source_view(boxed, doc_name="boxed.pdf", chunk_id="c1", unit_id="p1")
+    box_view = build_source_view(
+        boxed, doc_name="boxed.pdf", chunk_id="c1", unit_id="p1"
+    )
     assert box_view["unit"]["page_number"] == 2
     assert box_view["unit"]["bbox"] == [10, 20, 30, 40]
 
@@ -326,8 +394,14 @@ def test_source_locations_for_each_format(tmp_path):
     payload = Path(tmp_path / "a.docx")
     document.save(payload)
     parsed = parse_bytes("a.docx", payload.read_bytes(), document_id="doc-docx")
-    cell = next(unit for unit in parsed.walk() if unit.unit_type == "cell" and unit.content == "失效")
-    word = build_source_view(parsed, doc_name="a.docx", chunk_id="c1", unit_id=cell.unit_id)
+    cell = next(
+        unit
+        for unit in parsed.walk()
+        if unit.unit_type == "cell" and unit.content == "失效"
+    )
+    word = build_source_view(
+        parsed, doc_name="a.docx", chunk_id="c1", unit_id=cell.unit_id
+    )
     assert "冷却系统" in word["unit"]["section_path"]
     assert word["unit"]["cell_range"]
 
@@ -339,7 +413,9 @@ def test_source_locations_for_each_format(tmp_path):
     deck.save(target)
     slides = parse_bytes("a.pptx", target.read_bytes(), document_id="doc-pptx")
     slide_unit = next(unit for unit in slides.walk() if unit.unit_type == "slide")
-    power = build_source_view(slides, doc_name="a.pptx", chunk_id="c1", unit_id=slide_unit.unit_id)
+    power = build_source_view(
+        slides, doc_name="a.pptx", chunk_id="c1", unit_id=slide_unit.unit_id
+    )
     assert power["unit"]["slide_number"] == 1
 
     openpyxl = pytest.importorskip("openpyxl")
@@ -351,11 +427,15 @@ def test_source_locations_for_each_format(tmp_path):
     book.save(sheet_path)
     sheets = parse_bytes("a.xlsx", sheet_path.read_bytes(), document_id="doc-xlsx")
     cell_unit = next(unit for unit in sheets.walk() if "蜡包失效" in unit.content)
-    excel = build_source_view(sheets, doc_name="a.xlsx", chunk_id="c1", unit_id=cell_unit.unit_id)
+    excel = build_source_view(
+        sheets, doc_name="a.xlsx", chunk_id="c1", unit_id=cell_unit.unit_id
+    )
     assert excel["unit"]["sheet_name"] == "故障清单"
     assert excel["unit"]["cell_range"]
 
-    missing = build_source_view(note, doc_name="note.txt", chunk_id="legacy", unit_id="missing")
+    missing = build_source_view(
+        note, doc_name="note.txt", chunk_id="legacy", unit_id="missing"
+    )
     assert missing["unit"]["page_number"] is None
     assert missing["unit"]["line_start"] is None
     assert missing["unit"]["bbox"] is None
@@ -396,16 +476,30 @@ def test_source_api_isolates_owner_kb_version_and_deleted_files(tmp_path, monkey
     app.include_router(create_product_shell_routes(Rag(), Docs()))
     client = TestClient(app)
     csrf = {"X-KB-Request": "1"}
-    owner_token = client.post("/api/v1/auth/register", json={"email": "source-owner@example.com", "password": "correct-horse"}, headers=csrf)
+    owner_token = client.post(
+        "/api/v1/auth/register",
+        json={"email": "source-owner@example.com", "password": "correct-horse"},
+        headers=csrf,
+    )
     assert owner_token.status_code == 200, owner_token.text
-    other_token = client.post("/api/v1/auth/register", json={"email": "source-other@example.com", "password": "correct-horse"}, headers=csrf)
+    other_token = client.post(
+        "/api/v1/auth/register",
+        json={"email": "source-other@example.com", "password": "correct-horse"},
+        headers=csrf,
+    )
     assert other_token.status_code == 200, other_token.text
     owner = {"Authorization": f"Bearer {owner_token.json()['access_token']}", **csrf}
     stranger = {"Authorization": f"Bearer {other_token.json()['access_token']}", **csrf}
-    kb_id = client.post("/api/v1/kb", json={"name": "资料库"}, headers=owner).json()["id"]
-    other_kb = client.post("/api/v1/kb", json={"name": "另一库"}, headers=owner).json()["id"]
+    kb_id = client.post("/api/v1/kb", json={"name": "资料库"}, headers=owner).json()[
+        "id"
+    ]
+    other_kb = client.post("/api/v1/kb", json={"name": "另一库"}, headers=owner).json()[
+        "id"
+    ]
     owner_id = client.get("/api/v1/kb", headers=owner).json()["items"][0]["owner_id"]
-    note = parse_bytes("note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-note")
+    note = parse_bytes(
+        "note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-note"
+    )
     save_ir(working, note)
     stored = inputs / "note.txt"
     stored.write_text("第一段\n\n第二段", encoding="utf-8")
@@ -419,30 +513,84 @@ def test_source_api_isolates_owner_kb_version_and_deleted_files(tmp_path, monkey
         }
 
     mutate_shell(working, editor)
-    found = client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id, "unit_id": "t0001"}, headers=owner)
+    found = client.get(
+        "/api/v1/documents/doc-note/source",
+        params={"kb_id": kb_id, "unit_id": "t0001"},
+        headers=owner,
+    )
     assert found.status_code == 200, found.text
     body = found.json()
     assert body["unit"]["line_start"] == 1
     assert "storage_key" not in json.dumps(body)
     assert str(stored) not in json.dumps(body)
-    assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id}, headers=stranger).status_code == 404
-    assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": other_kb}, headers=owner).status_code == 404
-    assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id, "version_id": "missing"}, headers=owner).status_code == 404
-    content = client.get("/api/v1/documents/doc-note/content", params={"kb_id": kb_id, "unit_id": "t0001"}, headers=owner)
+    assert (
+        client.get(
+            "/api/v1/documents/doc-note/source",
+            params={"kb_id": kb_id},
+            headers=stranger,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            "/api/v1/documents/doc-note/source",
+            params={"kb_id": other_kb},
+            headers=owner,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            "/api/v1/documents/doc-note/source",
+            params={"kb_id": kb_id, "version_id": "missing"},
+            headers=owner,
+        ).status_code
+        == 404
+    )
+    content = client.get(
+        "/api/v1/documents/doc-note/content",
+        params={"kb_id": kb_id, "unit_id": "t0001"},
+        headers=owner,
+    )
     assert content.status_code == 200, content.text
     assert "第一段" in content.json()["text"]
     assert "storage_key" not in content.text
     assert str(inputs) not in content.text
-    downloaded = client.get("/api/v1/documents/doc-note/download", params={"kb_id": kb_id}, headers=owner)
+    downloaded = client.get(
+        "/api/v1/documents/doc-note/download", params={"kb_id": kb_id}, headers=owner
+    )
     assert downloaded.status_code == 200, downloaded.text
     assert "attachment;" in downloaded.headers["content-disposition"]
     assert "note.txt" in downloaded.headers["content-disposition"]
-    preview = client.get("/api/v1/documents/doc-note/preview", params={"kb_id": kb_id}, headers=owner)
+    preview = client.get(
+        "/api/v1/documents/doc-note/preview", params={"kb_id": kb_id}, headers=owner
+    )
     assert preview.status_code == 200
     for path in ("content", "download", "preview"):
-        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": kb_id}, headers=stranger).status_code == 404
-        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": other_kb}, headers=owner).status_code == 404
-        assert client.get(f"/api/v1/documents/doc-note/{path}", params={"kb_id": kb_id, "version_id": "missing"}, headers=owner).status_code == 404
+        assert (
+            client.get(
+                f"/api/v1/documents/doc-note/{path}",
+                params={"kb_id": kb_id},
+                headers=stranger,
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get(
+                f"/api/v1/documents/doc-note/{path}",
+                params={"kb_id": other_kb},
+                headers=owner,
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get(
+                f"/api/v1/documents/doc-note/{path}",
+                params={"kb_id": kb_id, "version_id": "missing"},
+                headers=owner,
+            ).status_code
+            == 404
+        )
 
     outside = tmp_path / "secret.txt"
     outside.write_text("secret", encoding="utf-8")
@@ -451,8 +599,20 @@ def test_source_api_isolates_owner_kb_version_and_deleted_files(tmp_path, monkey
         data["doc_index"]["doc-note"]["storage_key"] = str(outside)
 
     mutate_shell(working, escape)
-    assert client.get("/api/v1/documents/doc-note/download", params={"kb_id": kb_id}, headers=owner).status_code == 404
-    assert "secret" not in client.get("/api/v1/documents/doc-note/content", params={"kb_id": kb_id}, headers=owner).text
+    assert (
+        client.get(
+            "/api/v1/documents/doc-note/download",
+            params={"kb_id": kb_id},
+            headers=owner,
+        ).status_code
+        == 404
+    )
+    assert (
+        "secret"
+        not in client.get(
+            "/api/v1/documents/doc-note/content", params={"kb_id": kb_id}, headers=owner
+        ).text
+    )
 
     def restore(data):
         data["doc_index"]["doc-note"]["storage_key"] = str(stored)
@@ -470,14 +630,21 @@ def test_source_api_isolates_owner_kb_version_and_deleted_files(tmp_path, monkey
         }
 
     mutate_shell(working, office)
-    office_preview = client.get("/api/v1/documents/doc-office/preview", params={"kb_id": kb_id}, headers=owner)
+    office_preview = client.get(
+        "/api/v1/documents/doc-office/preview", params={"kb_id": kb_id}, headers=owner
+    )
     assert office_preview.status_code == 415
 
     def remove(data):
         data["doc_index"]["doc-note"]["deleted_at"] = "2026-01-01T00:00:00Z"
 
     mutate_shell(working, remove)
-    assert client.get("/api/v1/documents/doc-note/source", params={"kb_id": kb_id}, headers=owner).status_code == 404
+    assert (
+        client.get(
+            "/api/v1/documents/doc-note/source", params={"kb_id": kb_id}, headers=owner
+        ).status_code
+        == 404
+    )
 
 
 def test_empty_manifest_model_requires_rebuild(tmp_path, monkeypatch):
@@ -486,15 +653,20 @@ def test_empty_manifest_model_requires_rebuild(tmp_path, monkeypatch):
     working = tmp_path / "rag"
     working.mkdir()
     (working / "vdb_chunks.json").write_text("{}", encoding="utf-8")
-    (working / "index_manifest.json").write_text(json.dumps({
-        "schema_version": 1,
-        "embedding_model": "",
-        "embedding_dimension": 2560,
-        "embedding_instruction": "",
-        "normalization": "l2",
-        "chunking_version": "retrieval-180-350-overlap-45",
-        "parent_chunk_version": "parent-800-1500-section",
-    }), encoding="utf-8")
+    (working / "index_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "embedding_model": "",
+                "embedding_dimension": 2560,
+                "embedding_instruction": "",
+                "normalization": "l2",
+                "chunking_version": "retrieval-180-350-overlap-45",
+                "parent_chunk_version": "parent-800-1500-section",
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")
     monkeypatch.delenv("EMBEDDING_DIM", raising=False)
     monkeypatch.delenv("EMBEDDING_INSTRUCTION", raising=False)
@@ -519,8 +691,15 @@ def test_cache_rejects_changed_document_version():
         "document_versions": {"doc-1": "v1"},
     }
     kwargs = dict(
-        kb_id="kb", tenant="default", kb_version="v1", mode="mix", model="llm",
-        live_chunk_ids={"c1"}, user_id="user-a", index_version="idx", detail="standard",
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="mix",
+        model="llm",
+        live_chunk_ids={"c1"},
+        user_id="user-a",
+        index_version="idx",
+        detail="standard",
     )
     assert cache_entry_usable(entry, document_versions={"doc-1": "v1"}, **kwargs)
     assert not cache_entry_usable(entry, document_versions={"doc-1": "v2"}, **kwargs)
@@ -555,7 +734,12 @@ def test_cancelled_stream_does_not_save_partial_answer(tmp_path, monkeypatch):
         yield {"type": "meta", "answerable": True, "citations": []}
         yield {"type": "token", "text": "半截答案"}
         await asyncio.Event().wait()
-        yield {"type": "done", "answer": "半截答案", "complete": True, "store_cache": True}
+        yield {
+            "type": "done",
+            "answer": "半截答案",
+            "complete": True,
+            "store_cache": True,
+        }
 
     import sys
 
@@ -568,9 +752,15 @@ def test_cancelled_stream_does_not_save_partial_answer(tmp_path, monkeypatch):
     app.include_router(shell_module.create_product_shell_routes(Rag(), Docs()))
     client = TestClient(app)
     csrf = {"X-KB-Request": "1"}
-    token = client.post("/api/v1/auth/register", json={"email": "stream@example.com", "password": "correct-horse"}, headers=csrf).json()["access_token"]
+    token = client.post(
+        "/api/v1/auth/register",
+        json={"email": "stream@example.com", "password": "correct-horse"},
+        headers=csrf,
+    ).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}", **csrf}
-    kb_id = client.post("/api/v1/kb", json={"name": "资料库"}, headers=headers).json()["id"]
+    kb_id = client.post("/api/v1/kb", json={"name": "资料库"}, headers=headers).json()[
+        "id"
+    ]
 
     async def stop_early():
         payload = json.dumps({"query": "怎么办", "kb_id": kb_id}).encode("utf-8")

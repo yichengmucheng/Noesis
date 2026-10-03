@@ -35,7 +35,9 @@ def migrate(working_dir: Path, email: str) -> dict:
     data = _load(shell_path)
     migrate_shell_data(data)
     normalized = email.strip().lower()
-    user = next((item for item in ensure_users(data) if item.get("email") == normalized), None)
+    user = next(
+        (item for item in ensure_users(data) if item.get("email") == normalized), None
+    )
     if user is None:
         raise SystemExit(f"找不到用户 {normalized}。请先注册，再执行迁移。")
     if user.get("user_id") == LOCAL_OWNER_ID:
@@ -58,7 +60,9 @@ def check(working_dir: Path, kb_id: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="迁移 local-owner 知识库，或检查删除后是否还有残留")
+    parser = argparse.ArgumentParser(
+        description="迁移 local-owner 知识库，或检查删除后是否还有残留"
+    )
     parser.add_argument("--working-dir", required=True)
     parser.add_argument("--email", default="")
     parser.add_argument("--check-kb", default="")
@@ -69,7 +73,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.deep_check_kb:
         from lightrag.product_storage import deep_check
 
-        report = deep_check(folder, args.deep_check_kb, Path(args.input_dir) if args.input_dir else None)
+        report = deep_check(
+            folder, args.deep_check_kb, Path(args.input_dir) if args.input_dir else None
+        )
         print(json.dumps(report, ensure_ascii=False))
         return
     if args.check_kb:

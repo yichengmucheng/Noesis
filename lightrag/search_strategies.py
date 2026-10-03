@@ -38,7 +38,9 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
-def bm25_rank(query: str, documents: list[str], k1: float = 1.5, b: float = 0.75) -> list[float]:
+def bm25_rank(
+    query: str, documents: list[str], k1: float = 1.5, b: float = 0.75
+) -> list[float]:
     """Okapi BM25。文档为空时对应分数为 0。"""
     if not documents:
         return []
@@ -134,7 +136,9 @@ def admission_value(item: dict[str, Any]) -> float | None:
         return None
 
 
-def filter_by_threshold(hits: list[dict[str, Any]], threshold: float | None) -> list[dict[str, Any]]:
+def filter_by_threshold(
+    hits: list[dict[str, Any]], threshold: float | None
+) -> list[dict[str, Any]]:
     """用绝对相关度决定是否返回。排序分不能代替准入分。"""
     if threshold is None or not hits:
         return hits
@@ -147,7 +151,10 @@ def filter_by_threshold(hits: list[dict[str, Any]], threshold: float | None) -> 
         if score is None:
             continue
         cutoff = limit
-        if item.get("admission_score") is not None and item.get("admission_score") != "":
+        if (
+            item.get("admission_score") is not None
+            and item.get("admission_score") != ""
+        ):
             cutoff = 0.5 if limit <= 0.5 else limit
         if score < cutoff:
             continue
@@ -236,7 +243,7 @@ def expand_paths(
         best[name] = {
             "name": name,
             "hop": hop,
-            "score": score * (decay ** hop),
+            "score": score * (decay**hop),
             "path": path,
         }
         if hop >= hops:

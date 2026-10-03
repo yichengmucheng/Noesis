@@ -32,13 +32,22 @@ def _client(monkeypatch, enabled: str = "1"):
 def test_auth_routes_are_hidden_when_disabled(monkeypatch):
     client, _store = _client(monkeypatch, "0")
     assert client.get("/api/v1/auth/status").json()["enabled"] is False
-    assert client.post("/api/v1/auth/register", json={"email": "ada@example.com", "password": "correct-horse"}).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": "ada@example.com", "password": "correct-horse"},
+        ).status_code
+        == 404
+    )
 
 
 def test_register_login_refresh_and_logout(monkeypatch):
     client, store = _client(monkeypatch, "1")
     csrf = {"X-KB-Request": "1"}
-    missing_header = client.post("/api/v1/auth/register", json={"email": "Ada@Example.com", "password": "correct-horse"})
+    missing_header = client.post(
+        "/api/v1/auth/register",
+        json={"email": "Ada@Example.com", "password": "correct-horse"},
+    )
     assert missing_header.status_code == 403
     created = client.post(
         "/api/v1/auth/register",
@@ -54,12 +63,22 @@ def test_register_login_refresh_and_logout(monkeypatch):
     assert created.cookies.get("kb_refresh")
     first_cookie = created.cookies.get("kb_refresh")
 
-    wrong = client.post("/api/v1/auth/login", json={"email": "missing@example.com", "password": "correct-horse"}, headers=csrf)
-    mismatch = client.post("/api/v1/auth/login", json={"email": "ada@example.com", "password": "wrong-password"}, headers=csrf)
+    wrong = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "correct-horse"},
+        headers=csrf,
+    )
+    mismatch = client.post(
+        "/api/v1/auth/login",
+        json={"email": "ada@example.com", "password": "wrong-password"},
+        headers=csrf,
+    )
     assert wrong.status_code == mismatch.status_code == 401
     assert wrong.json()["detail"] == mismatch.json()["detail"] == "邮箱或密码错误"
 
-    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+    me = client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"}
+    )
     assert me.status_code == 200
     assert me.json()["user_id"] == body["user"]["user_id"]
     assert client.get("/api/v1/auth/me").status_code == 401
@@ -67,14 +86,18 @@ def test_register_login_refresh_and_logout(monkeypatch):
     refreshed = client.post("/api/v1/auth/refresh", headers=csrf)
     assert refreshed.status_code == 200
     assert "refresh_token" not in refreshed.json()
-    replay = client.post("/api/v1/auth/refresh", headers=csrf, cookies={"kb_refresh": first_cookie})
+    replay = client.post(
+        "/api/v1/auth/refresh", headers=csrf, cookies={"kb_refresh": first_cookie}
+    )
     assert replay.status_code == 401
 
     logout = client.post(
         "/api/v1/auth/logout",
         headers={**csrf, "Authorization": f"Bearer {refreshed.json()['access_token']}"},
     )
-    assert logout.status_code == 401 or all(item.get("revoked_at") for item in store["device_sessions"])
+    assert logout.status_code == 401 or all(
+        item.get("revoked_at") for item in store["device_sessions"]
+    )
 
 
 def test_production_refuses_to_start_without_real_accounts(monkeypatch):

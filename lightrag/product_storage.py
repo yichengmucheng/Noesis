@@ -185,7 +185,9 @@ def _shell_defaults(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _apply_diff(base: dict[str, Any], new: dict[str, Any], current: dict[str, Any]) -> None:
+def _apply_diff(
+    base: dict[str, Any], new: dict[str, Any], current: dict[str, Any]
+) -> None:
     """把 base 到 new 的差异写进 current。未改动的字段保留 current 里的并发更新。"""
     base = base if isinstance(base, dict) else {}
     new = new if isinstance(new, dict) else {}
@@ -199,7 +201,11 @@ def _apply_diff(base: dict[str, Any], new: dict[str, Any], current: dict[str, An
             continue
         if value == old:
             continue
-        if isinstance(value, dict) and isinstance(old, dict) and isinstance(current.get(key), dict):
+        if (
+            isinstance(value, dict)
+            and isinstance(old, dict)
+            and isinstance(current.get(key), dict)
+        ):
             _apply_diff(old, value, current[key])
         else:
             current[key] = json.loads(json.dumps(value))
@@ -308,7 +314,9 @@ def load_shell(working_dir: Path) -> dict[str, Any]:
     return data
 
 
-def mutate_shell(working_dir: Path, editor: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+def mutate_shell(
+    working_dir: Path, editor: Callable[[dict[str, Any]], None]
+) -> dict[str, Any]:
     """同一把跨进程锁里完成读取、修改、写临时文件和替换。"""
     path = _shell_path(working_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -388,7 +396,9 @@ def _kv(working_dir: Path, name: str) -> dict[str, Any]:
     payload = _read_json(working_dir / _STORE_FILES[name])
     if not isinstance(payload, dict):
         return {}
-    return {str(key): value for key, value in payload.items() if isinstance(value, dict)}
+    return {
+        str(key): value for key, value in payload.items() if isinstance(value, dict)
+    }
 
 
 def _save_kv(working_dir: Path, name: str, rows: dict[str, Any]) -> None:
@@ -399,7 +409,9 @@ def _record_id(key: str, row: dict[str, Any]) -> str:
     return str(row.get("__id__") or row.get("_id") or row.get("id") or key)
 
 
-def _hits(row: dict[str, Any], key: str, kb_id: str, doc_ids: set[str], chunk_ids: set[str]) -> bool:
+def _hits(
+    row: dict[str, Any], key: str, kb_id: str, doc_ids: set[str], chunk_ids: set[str]
+) -> bool:
     if kb_id and kb_id in split_values(row.get("kb_id")):
         return True
     doc_id = str(row.get("doc_id") or row.get("full_doc_id") or "")
@@ -486,7 +498,13 @@ def deep_check(
         orphan_count += sum(1 for row in rows if _orphan(row))
         stores[name] = {"count": len(leftovers), "samples": _samples(leftovers)}
 
-    for name in ("doc_status", "full_docs", "text_chunks", "full_entities", "full_relations"):
+    for name in (
+        "doc_status",
+        "full_docs",
+        "text_chunks",
+        "full_entities",
+        "full_relations",
+    ):
         rows = _kv(working_dir, name)
         leftovers = [
             _record_id(key, row)
@@ -527,12 +545,18 @@ def deep_check(
     cache = _load_cache(working_dir)
     cache_left = []
     for index, entry in enumerate(cache):
-        chunk_hit = set(str(item) for item in entry.get("chunk_ids") or []) & known_chunks
+        chunk_hit = (
+            set(str(item) for item in entry.get("chunk_ids") or []) & known_chunks
+        )
         if entry.get("kb_id") == kb_id or chunk_hit:
             cache_left.append(str(entry.get("id") or index))
     add_store("semantic_cache", cache_left, cache)
 
-    qa_left = [str(item.get("id") or "") for item in data.get("qa_pairs") or [] if item.get("kb_id") == kb_id]
+    qa_left = [
+        str(item.get("id") or "")
+        for item in data.get("qa_pairs") or []
+        if item.get("kb_id") == kb_id
+    ]
     add_store("qa", qa_left, [])
     comparison_left = [
         str(item.get("task_id") or item.get("id") or "")
@@ -541,17 +565,21 @@ def deep_check(
     ]
     add_store("comparison", comparison_left, [])
     audit_left = [
-        key for key, value in (data.get("audits") or {}).items()
+        key
+        for key, value in (data.get("audits") or {}).items()
         if isinstance(value, dict) and value.get("kb_id") == kb_id
     ]
     add_store("audit", audit_left, [])
     session_left = [
-        key for key, value in (data.get("sessions") or {}).items()
+        key
+        for key, value in (data.get("sessions") or {}).items()
         if isinstance(value, dict) and value.get("kb_id") == kb_id
     ]
     add_store("sessions", session_left, [])
     binding_left = [
-        key for key, value in (data.get("file_bindings") or {}).items() if value == kb_id
+        key
+        for key, value in (data.get("file_bindings") or {}).items()
+        if value == kb_id
     ]
     add_store("file_bindings", binding_left, [])
 
@@ -570,15 +598,25 @@ def deep_check(
     add_store("source_files", source_left, [])
 
     temp_left: list[str] = []
-    known_names = set(_STORE_FILES.values()) | {_GRAPH_FILE, "product_shell.json", "semantic_cache.json"}
+    known_names = set(_STORE_FILES.values()) | {
+        _GRAPH_FILE,
+        "product_shell.json",
+        "semantic_cache.json",
+    }
     if known_docs or known_chunks:
         for path in working_dir.rglob("*"):
-            if not path.is_file() or path.name in known_names or path.name.endswith(".tmp"):
+            if (
+                not path.is_file()
+                or path.name in known_names
+                or path.name.endswith(".tmp")
+            ):
                 continue
             if "document_ir" in path.parts:
                 continue
             text = path.name
-            if any(doc_id in text for doc_id in known_docs) or any(chunk_id in text for chunk_id in known_chunks):
+            if any(doc_id in text for doc_id in known_docs) or any(
+                chunk_id in text for chunk_id in known_chunks
+            ):
                 temp_left.append(path.name)
     add_store("temp_files", temp_left, [])
     ir_left: list[str] = []
@@ -587,9 +625,19 @@ def deep_check(
         for path in ir_root.rglob("*"):
             if not path.is_file():
                 continue
-            payload = _read_json(path) if path.suffix == ".json" or path.name.endswith(".json.bak") else None
-            document_id = str(payload.get("document_id") or "") if isinstance(payload, dict) else ""
-            if document_id in known_docs or any(doc_id in path.name for doc_id in known_docs):
+            payload = (
+                _read_json(path)
+                if path.suffix == ".json" or path.name.endswith(".json.bak")
+                else None
+            )
+            document_id = (
+                str(payload.get("document_id") or "")
+                if isinstance(payload, dict)
+                else ""
+            )
+            if document_id in known_docs or any(
+                doc_id in path.name for doc_id in known_docs
+            ):
                 ir_left.append(str(path.relative_to(working_dir)))
     add_store("document_ir", ir_left, [])
 
@@ -652,11 +700,24 @@ def document_consistency(
             edge_ids.append(f"{source}->{target}")
     duplicate_edges = len(edge_ids) != len(set(edge_ids))
     docs = _kv(working_dir, "full_docs")
-    doc_count = sum(1 for key, row in docs.items() if _record_id(key, row) == doc_id or str(row.get("doc_id") or "") == doc_id)
+    doc_count = sum(
+        1
+        for key, row in docs.items()
+        if _record_id(key, row) == doc_id or str(row.get("doc_id") or "") == doc_id
+    )
     ir_dir = working_dir / "document_ir"
-    ir_exists = any((ir_dir / name).exists() for name in (f"{doc_id}.json", f"{doc_id}.json.bak", f"{doc_id}.json.tmp"))
+    ir_exists = any(
+        (ir_dir / name).exists()
+        for name in (f"{doc_id}.json", f"{doc_id}.json.bak", f"{doc_id}.json.tmp")
+    )
     if expect == "absent":
-        passed = doc_count == 0 and not owned_chunks and not owned_vectors and not edge_ids and not ir_exists
+        passed = (
+            doc_count == 0
+            and not owned_chunks
+            and not owned_vectors
+            and not edge_ids
+            and not ir_exists
+        )
     else:
         passed = (
             bool(expected)
@@ -685,13 +746,20 @@ def document_consistency(
     }
 
 
-def _aligned(parts: list[str], original_sources: list[str], kept: set[str]) -> list[str]:
+def _aligned(
+    parts: list[str], original_sources: list[str], kept: set[str]
+) -> list[str]:
     if len(parts) == len(original_sources) and parts:
         return [part for part, source in zip(parts, original_sources) if source in kept]
     return parts
 
 
-def _rewrite_graph_attrs(attrs: dict[str, Any], removed_chunks: set[str], chunk_kb: dict[str, set[str]], kb_id: str) -> str:
+def _rewrite_graph_attrs(
+    attrs: dict[str, Any],
+    removed_chunks: set[str],
+    chunk_kb: dict[str, set[str]],
+    kb_id: str,
+) -> str:
     sources = split_values(attrs.get("source_id"))
     kept = [source for source in sources if source not in removed_chunks]
     if not sources:
@@ -702,7 +770,9 @@ def _rewrite_graph_attrs(attrs: dict[str, Any], removed_chunks: set[str], chunk_
             return "drop"
         attrs["kb_id"] = GRAPH_FIELD_SEP.join(rest)
         return "keep"
-    if not (set(sources) & removed_chunks) and kb_id not in split_values(attrs.get("kb_id")):
+    if not (set(sources) & removed_chunks) and kb_id not in split_values(
+        attrs.get("kb_id")
+    ):
         return "keep"
     if not kept:
         return "drop"
@@ -710,8 +780,12 @@ def _rewrite_graph_attrs(attrs: dict[str, Any], removed_chunks: set[str], chunk_
     docs = split_values(attrs.get("doc_id"))
     if len(docs) == len(sources):
         attrs["doc_id"] = GRAPH_FIELD_SEP.join(_aligned(docs, sources, set(kept)))
-    attrs["description"] = GRAPH_FIELD_SEP.join(_aligned(split_values(attrs.get("description")), sources, set(kept)))
-    attrs["file_path"] = GRAPH_FIELD_SEP.join(_aligned(split_values(attrs.get("file_path")), sources, set(kept)))
+    attrs["description"] = GRAPH_FIELD_SEP.join(
+        _aligned(split_values(attrs.get("description")), sources, set(kept))
+    )
+    attrs["file_path"] = GRAPH_FIELD_SEP.join(
+        _aligned(split_values(attrs.get("file_path")), sources, set(kept))
+    )
     kb_ids: list[str] = []
     for source in kept:
         for item in chunk_kb.get(source, set()):
@@ -729,7 +803,9 @@ def _open_vdb(path: Path):
         return None
     from nano_vectordb import NanoVectorDB
 
-    return NanoVectorDB(embedding_dim=int(payload["embedding_dim"]), storage_file=str(path))
+    return NanoVectorDB(
+        embedding_dim=int(payload["embedding_dim"]), storage_file=str(path)
+    )
 
 
 def _edit_vdb(path: Path, editor: Callable[[dict[str, Any]], str]) -> None:
@@ -759,7 +835,9 @@ def _maybe_fail(step: str) -> None:
         raise RuntimeError("存储删除失败")
 
 
-def _collect_chunks(working_dir: Path, data: dict[str, Any], kb_id: str, docs: set[str]) -> tuple[set[str], dict[str, set[str]]]:
+def _collect_chunks(
+    working_dir: Path, data: dict[str, Any], kb_id: str, docs: set[str]
+) -> tuple[set[str], dict[str, set[str]]]:
     removed: set[str] = set()
     chunk_kb: dict[str, set[str]] = {}
     for key, row in _kv(working_dir, "text_chunks").items():
@@ -802,10 +880,19 @@ def remove_documents(
         kept = {}
         for key, row in rows.items():
             identity = _record_id(key, row)
-            doc_id = str(row.get("doc_id") or row.get("full_doc_id") or row.get("document_id") or "")
-            if name in {"text_chunks", "parent_chunks"} and (identity in removed_chunks or doc_id in docs):
+            doc_id = str(
+                row.get("doc_id")
+                or row.get("full_doc_id")
+                or row.get("document_id")
+                or ""
+            )
+            if name in {"text_chunks", "parent_chunks"} and (
+                identity in removed_chunks or doc_id in docs
+            ):
                 continue
-            if name not in {"text_chunks", "parent_chunks"} and (identity in docs or doc_id in docs):
+            if name not in {"text_chunks", "parent_chunks"} and (
+                identity in docs or doc_id in docs
+            ):
                 continue
             kept[key] = row
         _save_kv(working_dir, name, kept)
@@ -817,8 +904,12 @@ def remove_documents(
             if sources and not [item for item in sources if item not in removed_chunks]:
                 continue
             if set(sources) & removed_chunks:
-                row["source_id"] = GRAPH_FIELD_SEP.join(item for item in sources if item not in removed_chunks)
-                row["kb_id"] = GRAPH_FIELD_SEP.join(item for item in split_values(row.get("kb_id")) if item != kb_id)
+                row["source_id"] = GRAPH_FIELD_SEP.join(
+                    item for item in sources if item not in removed_chunks
+                )
+                row["kb_id"] = GRAPH_FIELD_SEP.join(
+                    item for item in split_values(row.get("kb_id")) if item != kb_id
+                )
             kept[key] = row
         _save_kv(working_dir, name, kept)
     if crash_after == "docs":
@@ -872,8 +963,12 @@ def remove_documents(
             docs = split_values(row.get("doc_id"))
             if len(docs) == len(sources):
                 row["doc_id"] = GRAPH_FIELD_SEP.join(_aligned(docs, sources, set(kept)))
-            row["kb_id"] = GRAPH_FIELD_SEP.join(item for item in split_values(row.get("kb_id")) if item != kb_id)
-            row["content"] = GRAPH_FIELD_SEP.join(_aligned(split_values(row.get("content")), sources, set(kept)))
+            row["kb_id"] = GRAPH_FIELD_SEP.join(
+                item for item in split_values(row.get("kb_id")) if item != kb_id
+            )
+            row["content"] = GRAPH_FIELD_SEP.join(
+                _aligned(split_values(row.get("content")), sources, set(kept))
+            )
         return "keep"
 
     _edit_vdb(working_dir / _STORE_FILES["entities_vdb"], edit_entity)
@@ -900,7 +995,9 @@ def remove_documents(
             docs = split_values(row.get("doc_id"))
             if len(docs) == len(sources):
                 row["doc_id"] = GRAPH_FIELD_SEP.join(_aligned(docs, sources, set(kept)))
-            row["kb_id"] = GRAPH_FIELD_SEP.join(item for item in split_values(row.get("kb_id")) if item != kb_id)
+            row["kb_id"] = GRAPH_FIELD_SEP.join(
+                item for item in split_values(row.get("kb_id")) if item != kb_id
+            )
         elif kb_id in split_values(row.get("kb_id")) and not kept:
             return "drop"
         return "keep"
@@ -938,25 +1035,37 @@ def remove_documents(
             parent.rmdir()
     if purge_kb_metadata:
         data["file_bindings"] = {
-            key: value for key, value in (data.get("file_bindings") or {}).items() if value != kb_id
+            key: value
+            for key, value in (data.get("file_bindings") or {}).items()
+            if value != kb_id
         }
-        data["qa_pairs"] = [item for item in data.get("qa_pairs") or [] if item.get("kb_id") != kb_id]
-        data["comparisons"] = [item for item in data.get("comparisons") or [] if item.get("kb_id") != kb_id]
+        data["qa_pairs"] = [
+            item for item in data.get("qa_pairs") or [] if item.get("kb_id") != kb_id
+        ]
+        data["comparisons"] = [
+            item for item in data.get("comparisons") or [] if item.get("kb_id") != kb_id
+        ]
         audits = data.get("audits") or {}
         if isinstance(audits, dict):
             data["audits"] = {
-                key: value for key, value in audits.items()
+                key: value
+                for key, value in audits.items()
                 if not isinstance(value, dict) or value.get("kb_id") != kb_id
             }
         sessions = data.get("sessions") or {}
         if isinstance(sessions, dict):
             data["sessions"] = {
-                key: value for key, value in sessions.items()
+                key: value
+                for key, value in sessions.items()
                 if not isinstance(value, dict) or value.get("kb_id") != kb_id
             }
     for path in list(working_dir.glob("*")):
         if path.is_file() and any(doc_id in path.name for doc_id in docs):
-            if path.name not in set(_STORE_FILES.values()) | {_GRAPH_FILE, "product_shell.json", "semantic_cache.json"}:
+            if path.name not in set(_STORE_FILES.values()) | {
+                _GRAPH_FILE,
+                "product_shell.json",
+                "semantic_cache.json",
+            }:
                 path.unlink()
     _drop_document_ir(working_dir, docs)
     return {"doc_ids": sorted(docs), "chunk_ids": sorted(removed_chunks)}
@@ -992,7 +1101,10 @@ def execute_purge(
     working_dir = Path(working_dir)
     input_dir = Path(input_dir)
     data = load_shell(working_dir)
-    job = next((item for item in data.get("purge_jobs") or [] if item.get("job_id") == job_id), None)
+    job = next(
+        (item for item in data.get("purge_jobs") or [] if item.get("job_id") == job_id),
+        None,
+    )
     if job is None:
         raise KeyError(job_id)
     kb_id = str(job.get("kb_id") or "")
@@ -1001,7 +1113,10 @@ def execute_purge(
     doc_ids = [
         str(row.get("doc_id"))
         for row in (data.get("doc_index") or {}).values()
-        if isinstance(row, dict) and row.get("kb_id") == kb_id and row.get("doc_id") and not row.get("deleted_at")
+        if isinstance(row, dict)
+        and row.get("kb_id") == kb_id
+        and row.get("doc_id")
+        and not row.get("deleted_at")
     ]
     for key, row in _kv(working_dir, "doc_status").items():
         if _hits(row, key, kb_id, set(doc_ids), set()):
@@ -1053,14 +1168,24 @@ def execute_purge(
         return report
     except ProcessCrash:
         data = load_shell(working_dir)
-        current = next((item for item in data.get("purge_jobs") or [] if item.get("job_id") == job_id), job)
+        current = next(
+            (
+                item
+                for item in data.get("purge_jobs") or []
+                if item.get("job_id") == job_id
+            ),
+            job,
+        )
         current["status"] = "running"
         current["step"] = "documents"
         save_shell(working_dir, data)
         raise
     except Exception as exc:
         message = str(exc).strip() or "删除失败"
-        if any(word in message.lower() for word in ("token", "password", "api_key", "cookie", "sk-")):
+        if any(
+            word in message.lower()
+            for word in ("token", "password", "api_key", "cookie", "sk-")
+        ):
             message = "删除失败"
         job["attempts"] = int(job.get("attempts") or 0) + 1
         job["status"] = "failed"

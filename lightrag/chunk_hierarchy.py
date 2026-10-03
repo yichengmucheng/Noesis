@@ -49,7 +49,9 @@ def _token_pieces(text: str) -> list[str]:
     return pieces
 
 
-def split_token_windows(text: str, size: int = RETRIEVAL_TARGET, overlap: int = OVERLAP_TARGET) -> list[str]:
+def split_token_windows(
+    text: str, size: int = RETRIEVAL_TARGET, overlap: int = OVERLAP_TARGET
+) -> list[str]:
     pieces = _token_pieces(text)
     if not pieces:
         return []
@@ -134,7 +136,11 @@ def assign_parents(
             if unit_id and unit_id not in unit_ids:
                 unit_ids.append(unit_id)
             item["parent_id"] = parent_id
-            item["index_text"] = index_text(document_name, item.get("section_path") or [], str(item.get("content") or ""))
+            item["index_text"] = index_text(
+                document_name,
+                item.get("section_path") or [],
+                str(item.get("content") or ""),
+            )
             item.pop("parent_content", None)
         parents.append(
             {
@@ -147,7 +153,9 @@ def assign_parents(
                 "token_count": count_tokens(content),
                 "chunk_ids": [str(item.get("chunk_id") or "") for item in current],
                 "kb_id": str(current[0].get("kb_id") or ""),
-                "owner_id": str(current[0].get("owner_id") or current[0].get("user_id") or ""),
+                "owner_id": str(
+                    current[0].get("owner_id") or current[0].get("user_id") or ""
+                ),
             }
         )
         current.clear()
@@ -158,7 +166,11 @@ def assign_parents(
         tokens = count_tokens(str(item.get("content") or ""))
         if current and key != current_key:
             flush()
-        elif current and current_tokens + tokens > PARENT_MAX and current_tokens >= PARENT_MIN:
+        elif (
+            current
+            and current_tokens + tokens > PARENT_MAX
+            and current_tokens >= PARENT_MIN
+        ):
             flush()
         current.append(item)
         current_key = key

@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import os
 
-from lightrag.product_accounts import issue_refresh_token, list_device_sessions, upload_capability
+from lightrag.product_accounts import (
+    issue_refresh_token,
+    list_device_sessions,
+    upload_capability,
+)
 
 
 def test_device_session_marks_current_and_last_used():

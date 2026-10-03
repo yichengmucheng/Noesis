@@ -16,7 +16,9 @@ PROJECT = Path(__file__).resolve().parents[1]
 def test_permission_error_retries_and_reads_backup(tmp_path, monkeypatch):
     working = tmp_path / "rag"
     working.mkdir()
-    save_shell(working, {"kbs": [{"id": "kb-a"}], "upload_jobs": {"job": {"status": "ready"}}})
+    save_shell(
+        working, {"kbs": [{"id": "kb-a"}], "upload_jobs": {"job": {"status": "ready"}}}
+    )
     calls = {"n": 0}
     original = Path.replace
 
@@ -38,7 +40,15 @@ def test_api_poll_and_worker_update_twenty_rounds(tmp_path):
     working = tmp_path / "rag"
     working.mkdir()
     initial = load_shell(working)
-    initial["kbs"] = [{"id": "kb-a", "owner_id": "user-a", "name": "个人库", "settings": {}, "graph_config": {}}]
+    initial["kbs"] = [
+        {
+            "id": "kb-a",
+            "owner_id": "user-a",
+            "name": "个人库",
+            "settings": {},
+            "graph_config": {},
+        }
+    ]
     initial["upload_jobs"] = {"job-1": {"status": "queued", "n": 0}}
     save_shell(working, initial)
     errors: list[str] = []
@@ -99,7 +109,11 @@ for step in range(25):
     env["PYTHONPATH"] = str(PROJECT) + os.pathsep + env.get("PYTHONPATH", "")
     for _round in range(20):
         processes = [
-            subprocess.Popen([sys.executable, "-c", code, str(working), field], cwd=str(PROJECT), env=env)
+            subprocess.Popen(
+                [sys.executable, "-c", code, str(working), field],
+                cwd=str(PROJECT),
+                env=env,
+            )
             for field in ("upload_jobs", "audits")
         ]
         codes = [process.wait(timeout=60) for process in processes]

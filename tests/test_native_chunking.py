@@ -3,11 +3,9 @@
 原生分层切块单元测试（替代 langchain 的 .docx 分支）
 覆盖：标题层级、表格原子性、中文句读分割、超长硬切、空输入
 """
-import pytest
 
 from lightrag.operate import (
     chunking_by_token_size,
-    _hierarchical_markdown_chunks,
     _smart_text_split,
     _split_with_table_guard,
     _split_markdown_headers,
@@ -62,7 +60,13 @@ def test_headers_split_with_hierarchy():
 
 
 def test_table_is_atomic():
-    pieces = _split_with_table_guard("前置文本。" * 50 + "\n<table>\n<tr><td>a</td></tr>\n</table>\n" + "后置文本。" * 50, 120, 20)
+    pieces = _split_with_table_guard(
+        "前置文本。" * 50
+        + "\n<table>\n<tr><td>a</td></tr>\n</table>\n"
+        + "后置文本。" * 50,
+        120,
+        20,
+    )
     table_pieces = [p for p in pieces if p.startswith("<table>")]
     assert len(table_pieces) == 1
     assert table_pieces[0].strip() == "<table>\n<tr><td>a</td></tr>\n</table>"
@@ -98,14 +102,23 @@ def test_hierarchy_prefix_on_chunks():
     chunks = _chunk(SAMPLE, max_token=64, overlap=16)
     assert chunks
     # 每个块若属于某标题节，必须携带标题链前缀（表块除外：直接来自该节文本）
-    b_chunks = [c for c in chunks if "二级标题B" in c["content"] or "表格之后" in c["content"]]
+    b_chunks = [
+        c for c in chunks if "二级标题B" in c["content"] or "表格之后" in c["content"]
+    ]
+    assert b_chunks
     assert any(c["content"].startswith("# 一级标题甲") for c in chunks)
 
 
 def test_docx_chunk_output_schema():
     chunks = _chunk(SAMPLE)
     for c in chunks:
-        assert {"tokens", "content", "chunk_order_index", "parent_id", "parent_content"} <= set(c.keys())
+        assert {
+            "tokens",
+            "content",
+            "chunk_order_index",
+            "parent_id",
+            "parent_content",
+        } <= set(c.keys())
         assert c["parent_content"]
         assert c["tokens"] == len(c["content"])  # FakeTokenizer 字符计 token
         assert c["content"].strip()
@@ -125,7 +138,14 @@ def test_generic_fallback_unchanged():
     assert md and all(len(c["content"]) <= 60 for c in md)
 
 
-def _chunk_with(content, file_type=".txt", strategy="fixed", max_token=1024, overlap=0, delimiter=None):
+def _chunk_with(
+    content,
+    file_type=".txt",
+    strategy="fixed",
+    max_token=1024,
+    overlap=0,
+    delimiter=None,
+):
     return chunking_by_token_size(
         file_path=f"sample{file_type}",
         tokenizer=_FakeTokenizer(),
@@ -143,7 +163,12 @@ def test_fixed_splits_by_length():
 
 
 def test_delimiter_keeps_segments():
-    chunks = _chunk_with("现象甲\n---\n现象乙\n---\n现象丙", strategy="delimiter", delimiter="---", max_token=100)
+    chunks = _chunk_with(
+        "现象甲\n---\n现象乙\n---\n现象丙",
+        strategy="delimiter",
+        delimiter="---",
+        max_token=100,
+    )
     assert [c["content"] for c in chunks] == ["现象甲", "现象乙", "现象丙"]
 
 

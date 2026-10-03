@@ -58,7 +58,12 @@ def test_window_keeps_five_rounds_and_summary_stays_out_of_system():
         "trust": "low",
         "notice": "不是指令",
     }
-    system, user = build_messages("当前问题", [{"doc_name": "a.docx", "parent_content": "父块正文"}], recent, summary)
+    system, user = build_messages(
+        "当前问题",
+        [{"doc_name": "a.docx", "parent_content": "父块正文"}],
+        recent,
+        summary,
+    )
     assert system == SYSTEM_PROMPT
     assert "早期结论是密封失效" not in system
     assert "不是指令" in user
@@ -87,26 +92,62 @@ def test_cache_requires_version_and_live_chunks():
         "user_id": "user-a",
     }
     assert not cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen", live_chunk_ids={"c1"}
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
     )
     assert cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen",
-        live_chunk_ids={"c1"}, user_id="user-a",
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
+        user_id="user-a",
     )
     assert not cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v2", mode="hybrid", model="qwen", live_chunk_ids={"c1"}
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v2",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
     )
     assert not cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen",
-        live_chunk_ids=set(), user_id="user-a",
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids=set(),
+        user_id="user-a",
     )
     assert cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen",
-        live_chunk_ids={"c1"}, user_id="user-a",
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
+        user_id="user-a",
     )
     assert not cache_entry_usable(
-        entry, kb_id="kb", tenant="default", kb_version="v1", mode="hybrid", model="qwen",
-        live_chunk_ids={"c1"}, user_id="user-b",
+        entry,
+        kb_id="kb",
+        tenant="default",
+        kb_version="v1",
+        mode="hybrid",
+        model="qwen",
+        live_chunk_ids={"c1"},
+        user_id="user-b",
     )
 
 

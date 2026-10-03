@@ -64,12 +64,16 @@ def load_manifest(working: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def save_manifest(working: Path, dimension: int, chunk_ids: list[str]) -> dict[str, Any]:
+def save_manifest(
+    working: Path, dimension: int, chunk_ids: list[str]
+) -> dict[str, Any]:
     payload = build_manifest(dimension, chunk_ids)
     path = manifest_path(working)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     os.replace(temporary, path)
     return payload
 
@@ -97,7 +101,9 @@ def manifest_mismatches(manifest: dict[str, Any] | None) -> list[str]:
             reasons.append("embedding 维度不一致")
     expected_instruction = _env("EMBEDDING_INSTRUCTION")
     actual_instruction = str(manifest.get("embedding_instruction") or "")
-    if expected_instruction != actual_instruction and (expected_instruction or actual_instruction):
+    if expected_instruction != actual_instruction and (
+        expected_instruction or actual_instruction
+    ):
         if _env("EMBEDDING_MODEL"):
             reasons.append("embedding instruction 不一致")
     if str(manifest.get("normalization") or "") != NORMALIZATION:
@@ -145,10 +151,16 @@ def rebuild_index(working: Path, embed: Callable[[list[str]], Any]) -> dict[str,
 
     root = Path(working)
     rows = _kv(root, "text_chunks")
-    chunks = [dict(item) for item in rows.values() if isinstance(item, dict) and item.get("chunk_id")]
+    chunks = [
+        dict(item)
+        for item in rows.values()
+        if isinstance(item, dict) and item.get("chunk_id")
+    ]
     if not chunks:
         raise RuntimeError("没有可重建的切块")
-    texts = [str(item.get("index_text") or item.get("content") or "") for item in chunks]
+    texts = [
+        str(item.get("index_text") or item.get("content") or "") for item in chunks
+    ]
     if any(not text.strip() for text in texts):
         raise RuntimeError("存在空切块，已保留旧索引")
 
@@ -165,7 +177,9 @@ def rebuild_index(working: Path, embed: Callable[[list[str]], Any]) -> dict[str,
         matrix = asyncio.run(_embed())
     except RuntimeError as exc:
         if "asyncio.run() cannot be called" in str(exc):
-            matrix = np.asarray(asyncio.get_event_loop().run_until_complete(_embed()), dtype=np.float32)
+            matrix = np.asarray(
+                asyncio.get_event_loop().run_until_complete(_embed()), dtype=np.float32
+            )
         else:
             raise
     if matrix.shape[0] != len(chunks):
@@ -193,13 +207,19 @@ def rebuild_index(working: Path, embed: Callable[[list[str]], Any]) -> dict[str,
     try:
         grouped: dict[tuple[str, str, str], list[tuple[dict[str, Any], int]]] = {}
         for index, item in enumerate(chunks):
-            key = (str(item.get("doc_id") or ""), str(item.get("kb_id") or ""), str(item.get("owner_id") or item.get("user_id") or ""))
+            key = (
+                str(item.get("doc_id") or ""),
+                str(item.get("kb_id") or ""),
+                str(item.get("owner_id") or item.get("user_id") or ""),
+            )
             grouped.setdefault(key, []).append((item, index))
         for (doc_id, kb_id, owner_id), pairs in grouped.items():
             if not doc_id or not kb_id or not owner_id:
                 raise RuntimeError("切块缺少归属，已保留旧索引")
             part = np.vstack([matrix[index] for _item, index in pairs])
-            write_chunk_vectors(staging, doc_id, kb_id, owner_id, [item for item, _index in pairs], part)
+            write_chunk_vectors(
+                staging, doc_id, kb_id, owner_id, [item for item, _index in pairs], part
+            )
         written = _vdb_rows(staging / "vdb_chunks.json")
         if len(written) != len(chunks):
             raise RuntimeError("临时索引记录数量不一致，已保留旧索引")
@@ -218,7 +238,12 @@ def rebuild_index(working: Path, embed: Callable[[list[str]], Any]) -> dict[str,
         raise
     if staging.exists():
         shutil.rmtree(staging, ignore_errors=True)
-    return {"status": "rebuilt", "records": len(chunks), "dimension": dimension, "manifest": manifest}
+    return {
+        "status": "rebuilt",
+        "records": len(chunks),
+        "dimension": dimension,
+        "manifest": manifest,
+    }
 
 
 def run_index_rebuild(store: Any, job: dict[str, Any], working: Path) -> dict[str, Any]:
@@ -229,7 +254,9 @@ def run_index_rebuild(store: Any, job: dict[str, Any], working: Path) -> dict[st
     try:
         report = rebuild_index(Path(working), embed_texts)
     except Exception as exc:
-        message = str(exc).replace(os.getenv("EMBEDDING_BINDING_API_KEY", " "), "***")[:180]
+        message = str(exc).replace(os.getenv("EMBEDDING_BINDING_API_KEY", " "), "***")[
+            :180
+        ]
         return store.transition(
             job["job_id"],
             "failed",

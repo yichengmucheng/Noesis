@@ -61,9 +61,7 @@ async def storage(tmp_path):
         global_config={
             "embedding_batch_num": 10,
             "max_graph_nodes": 1000,
-            "vector_db_storage_cls_kwargs": {
-                "cosine_better_than_threshold": 0.5
-            },
+            "vector_db_storage_cls_kwargs": {"cosine_better_than_threshold": 0.5},
             "working_dir": str(tmp_path),
         },
         embedding_func=mock_embedding_func,

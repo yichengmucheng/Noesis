@@ -228,7 +228,9 @@ def _commit_with_retry(conn: sqlite3.Connection, attempts: int = 6) -> None:
             time.sleep(0.05 * (attempt + 1))
 
 
-def _pragma_with_retry(conn: sqlite3.Connection, statement: str, attempts: int = 20) -> None:
+def _pragma_with_retry(
+    conn: sqlite3.Connection, statement: str, attempts: int = 20
+) -> None:
     for attempt in range(attempts):
         try:
             conn.execute(statement)
@@ -307,7 +309,9 @@ class AppStore:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=8.0)
+        self._conn = sqlite3.connect(
+            str(self.path), check_same_thread=False, timeout=8.0
+        )
         self._conn.row_factory = sqlite3.Row
         _pragma_with_retry(self._conn, "PRAGMA journal_mode = WAL")
         _pragma_with_retry(self._conn, "PRAGMA synchronous = NORMAL")
@@ -347,7 +351,9 @@ class AppStore:
         rows = self._all("SELECT version FROM schema_migrations ORDER BY applied_at")
         return [str(row["version"]) for row in rows]
 
-    def create_conversation(self, owner_id: str, kb_id: str, title: str = "") -> dict[str, Any]:
+    def create_conversation(
+        self, owner_id: str, kb_id: str, title: str = ""
+    ) -> dict[str, Any]:
         now = _now()
         row = {
             "id": uuid4().hex,
@@ -377,7 +383,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self._public_conversation(row)
 
-    def get_conversation(self, conversation_id: str, owner_id: str, kb_id: str) -> dict[str, Any] | None:
+    def get_conversation(
+        self, conversation_id: str, owner_id: str, kb_id: str
+    ) -> dict[str, Any] | None:
         row = self._one(
             "SELECT * FROM conversations WHERE id = ? AND owner_id = ? AND kb_id = ?",
             (conversation_id, owner_id, kb_id),
@@ -402,7 +410,9 @@ class AppStore:
             query += " AND title LIKE ?"
             params.append(f"%{text}%")
         query += " ORDER BY is_pinned DESC, last_message_at DESC, updated_at DESC"
-        return [self._public_conversation(row) for row in self._all(query, tuple(params))]
+        return [
+            self._public_conversation(row) for row in self._all(query, tuple(params))
+        ]
 
     def update_conversation(
         self,
@@ -448,7 +458,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self.get_conversation(conversation_id, owner_id, kb_id)
 
-    def delete_conversation(self, conversation_id: str, owner_id: str, kb_id: str) -> bool:
+    def delete_conversation(
+        self, conversation_id: str, owner_id: str, kb_id: str
+    ) -> bool:
         found = self.get_conversation(conversation_id, owner_id, kb_id)
         if found is None:
             return False
@@ -527,7 +539,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self._public_message(row)
 
-    def list_messages(self, conversation_id: str, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
+    def list_messages(
+        self, conversation_id: str, owner_id: str, kb_id: str
+    ) -> list[dict[str, Any]]:
         rows = self._all(
             """
             SELECT * FROM messages
@@ -538,7 +552,9 @@ class AppStore:
         )
         return [self._public_message(row) for row in rows]
 
-    def get_message(self, message_id: str, owner_id: str, kb_id: str) -> dict[str, Any] | None:
+    def get_message(
+        self, message_id: str, owner_id: str, kb_id: str
+    ) -> dict[str, Any] | None:
         row = self._one(
             "SELECT * FROM messages WHERE id = ? AND owner_id = ? AND kb_id = ?",
             (message_id, owner_id, kb_id),
@@ -581,7 +597,10 @@ class AppStore:
             "created_at": now,
         }
         with self._lock:
-            self._conn.execute("DELETE FROM answer_feedback WHERE message_id = ? AND owner_id = ?", (message_id, owner_id))
+            self._conn.execute(
+                "DELETE FROM answer_feedback WHERE message_id = ? AND owner_id = ?",
+                (message_id, owner_id),
+            )
             self._conn.execute(
                 """
                 INSERT INTO answer_feedback(
@@ -607,17 +626,20 @@ class AppStore:
                         payload["id"],
                         owner_id,
                         kb_id,
-                        json.dumps({
-                            "question": question,
-                            "answer": answer,
-                            "citations": citations or [],
-                            "reason": reason,
-                            "comment": comment,
-                            "index_version": index_version,
-                            "embedding_model": embedding_model,
-                            "rerank_model": rerank_model,
-                            "llm_model": llm_model,
-                        }, ensure_ascii=False),
+                        json.dumps(
+                            {
+                                "question": question,
+                                "answer": answer,
+                                "citations": citations or [],
+                                "reason": reason,
+                                "comment": comment,
+                                "index_version": index_version,
+                                "embedding_model": embedding_model,
+                                "rerank_model": rerank_model,
+                                "llm_model": llm_model,
+                            },
+                            ensure_ascii=False,
+                        ),
                         now,
                     ),
                 )
@@ -636,17 +658,21 @@ class AppStore:
                 payload = json.loads(data.get("payload_json") or "{}")
             except json.JSONDecodeError:
                 payload = {}
-            items.append({
-                "id": data["id"],
-                "feedback_id": data["feedback_id"],
-                "owner_id": data["owner_id"],
-                "kb_id": data["kb_id"],
-                "payload": payload,
-                "created_at": data["created_at"],
-            })
+            items.append(
+                {
+                    "id": data["id"],
+                    "feedback_id": data["feedback_id"],
+                    "owner_id": data["owner_id"],
+                    "kb_id": data["kb_id"],
+                    "payload": payload,
+                    "created_at": data["created_at"],
+                }
+            )
         return items
 
-    def history_for_answer(self, conversation_id: str, owner_id: str, kb_id: str) -> list[dict[str, str]]:
+    def history_for_answer(
+        self, conversation_id: str, owner_id: str, kb_id: str
+    ) -> list[dict[str, str]]:
         items = []
         for row in self.list_messages(conversation_id, owner_id, kb_id):
             if row["status"] != "completed" or row["role"] not in {"user", "assistant"}:
@@ -678,7 +704,9 @@ class AppStore:
             "content": (content or "").strip(),
             "category": category or "other",
             "source_refs_json": json.dumps(source_refs or [], ensure_ascii=False),
-            "status": status if status in {"pending", "accepted", "rejected"} else "pending",
+            "status": status
+            if status in {"pending", "accepted", "rejected"}
+            else "pending",
             "created_at": now,
         }
         with self._lock:
@@ -697,7 +725,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self._public_candidate(row)
 
-    def get_memory_candidate(self, candidate_id: str, owner_id: str, kb_id: str | None = None) -> dict[str, Any] | None:
+    def get_memory_candidate(
+        self, candidate_id: str, owner_id: str, kb_id: str | None = None
+    ) -> dict[str, Any] | None:
         if kb_id:
             row = self._one(
                 "SELECT * FROM memory_candidates WHERE id = ? AND owner_id = ? AND kb_id = ?",
@@ -710,7 +740,9 @@ class AppStore:
             )
         return self._public_candidate(row) if row else None
 
-    def list_memory_candidates(self, owner_id: str, kb_id: str | None = None, status: str = "pending") -> list[dict[str, Any]]:
+    def list_memory_candidates(
+        self, owner_id: str, kb_id: str | None = None, status: str = "pending"
+    ) -> list[dict[str, Any]]:
         if kb_id:
             rows = self._all(
                 """
@@ -731,7 +763,9 @@ class AppStore:
             )
         return [self._public_candidate(row) for row in rows]
 
-    def set_candidate_status(self, candidate_id: str, owner_id: str, status: str, kb_id: str | None = None) -> dict[str, Any] | None:
+    def set_candidate_status(
+        self, candidate_id: str, owner_id: str, status: str, kb_id: str | None = None
+    ) -> dict[str, Any] | None:
         current = self.get_memory_candidate(candidate_id, owner_id, kb_id)
         if current is None:
             return None
@@ -799,7 +833,9 @@ class AppStore:
             "scope": scope,
             "kb_id": kb_id,
             "expires_at": str(expires_at or ""),
-            "source_status": source_status if source_status in {"active", "deleted", "unavailable", "expired"} else "active",
+            "source_status": source_status
+            if source_status in {"active", "deleted", "unavailable", "expired"}
+            else "active",
             "embedding_json": json.dumps(embedding or [], ensure_ascii=False),
             "embedding_model": embedding_model or "",
             "created_at": now,
@@ -824,10 +860,15 @@ class AppStore:
         return self._public_memory(row)
 
     def get_memory(self, memory_id: str, owner_id: str) -> dict[str, Any] | None:
-        row = self._one("SELECT * FROM memories WHERE id = ? AND owner_id = ?", (memory_id, owner_id))
+        row = self._one(
+            "SELECT * FROM memories WHERE id = ? AND owner_id = ?",
+            (memory_id, owner_id),
+        )
         return self._public_memory(row) if row else None
 
-    def list_memories(self, owner_id: str, kb_id: str | None = None) -> list[dict[str, Any]]:
+    def list_memories(
+        self, owner_id: str, kb_id: str | None = None
+    ) -> list[dict[str, Any]]:
         if kb_id:
             rows = self._all(
                 """SELECT * FROM memories
@@ -836,7 +877,10 @@ class AppStore:
                 (owner_id, kb_id),
             )
         else:
-            rows = self._all("SELECT * FROM memories WHERE owner_id = ? ORDER BY updated_at DESC", (owner_id,))
+            rows = self._all(
+                "SELECT * FROM memories WHERE owner_id = ? ORDER BY updated_at DESC",
+                (owner_id,),
+            )
         return [self._public_memory(row) for row in rows]
 
     def enabled_memories(self, owner_id: str) -> list[dict[str, Any]]:
@@ -875,7 +919,11 @@ class AppStore:
             keyword_score = _keyword_overlap(query_terms, terms)
             vector_score = 0.0
             stored_model = str(item.get("embedding_model") or "")
-            if embedding and (not embedding_model or not stored_model or stored_model == embedding_model):
+            if embedding and (
+                not embedding_model
+                or not stored_model
+                or stored_model == embedding_model
+            ):
                 vector_score = _cosine(embedding, item.get("embedding") or [])
             score = (0.7 * vector_score) + (0.3 * keyword_score)
             if not embedding:
@@ -885,9 +933,19 @@ class AppStore:
             if score < 0.2:
                 continue
             item["memory_score"] = round(float(score), 6)
-            item["retrieval_reason"] = "语义与关键词均相关" if vector_score and keyword_score else ("语义相关" if vector_score else "关键词命中")
+            item["retrieval_reason"] = (
+                "语义与关键词均相关"
+                if vector_score and keyword_score
+                else ("语义相关" if vector_score else "关键词命中")
+            )
             candidates.append(item)
-        candidates.sort(key=lambda item: (float(item.get("memory_score") or 0), item.get("updated_at") or ""), reverse=True)
+        candidates.sort(
+            key=lambda item: (
+                float(item.get("memory_score") or 0),
+                item.get("updated_at") or "",
+            ),
+            reverse=True,
+        )
         selected: list[dict[str, Any]] = []
         used_tokens = 0
         for item in candidates[: max(1, min(int(top_k or 5), 10))]:
@@ -895,7 +953,9 @@ class AppStore:
             if selected and used_tokens + tokens > max(1, int(token_budget or 1200)):
                 continue
             if not selected and tokens > max(1, int(token_budget or 1200)):
-                item["content"] = item["content"][: max(1, int(token_budget or 1200)) * 2]
+                item["content"] = item["content"][
+                    : max(1, int(token_budget or 1200)) * 2
+                ]
                 tokens = _memory_token_count(item["content"])
             selected.append(item)
             used_tokens += tokens
@@ -919,11 +979,17 @@ class AppStore:
         next_content = current["content"] if content is None else content.strip()
         next_category = current["category"] if category is None else category
         next_enabled = current["enabled"] if enabled is None else enabled
-        next_scope = current.get("scope") if scope is None else (scope if scope in {"global", "kb"} else current.get("scope"))
+        next_scope = (
+            current.get("scope")
+            if scope is None
+            else (scope if scope in {"global", "kb"} else current.get("scope"))
+        )
         next_kb_id = current.get("kb_id") if kb_id is None else str(kb_id or "")
         if next_scope == "global":
             next_kb_id = ""
-        next_expires_at = current.get("expires_at") if expires_at is None else str(expires_at or "")
+        next_expires_at = (
+            current.get("expires_at") if expires_at is None else str(expires_at or "")
+        )
         with self._lock:
             self._conn.execute(
                 """
@@ -931,7 +997,17 @@ class AppStore:
                 SET content = ?, category = ?, enabled = ?, scope = ?, kb_id = ?, expires_at = ?, updated_at = ?
                 WHERE id = ? AND owner_id = ?
                 """,
-                (next_content, next_category, 1 if next_enabled else 0, next_scope, next_kb_id, next_expires_at, _now(), memory_id, owner_id),
+                (
+                    next_content,
+                    next_category,
+                    1 if next_enabled else 0,
+                    next_scope,
+                    next_kb_id,
+                    next_expires_at,
+                    _now(),
+                    memory_id,
+                    owner_id,
+                ),
             )
             _commit_with_retry(self._conn)
         return self.get_memory(memory_id, owner_id)
@@ -941,7 +1017,10 @@ class AppStore:
         if found is None:
             return False
         with self._lock:
-            self._conn.execute("DELETE FROM memories WHERE id = ? AND owner_id = ?", (memory_id, owner_id))
+            self._conn.execute(
+                "DELETE FROM memories WHERE id = ? AND owner_id = ?",
+                (memory_id, owner_id),
+            )
             _commit_with_retry(self._conn)
         return True
 
@@ -955,25 +1034,58 @@ class AppStore:
         """
         with self._lock:
             if owner_id:
-                self._conn.execute("DELETE FROM offline_eval_candidates WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM answer_feedback WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM messages WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM conversations WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM voice_practice_turns WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
-                self._conn.execute("DELETE FROM voice_practice_sessions WHERE kb_id = ? AND owner_id = ?", (kb_id, owner_id))
+                self._conn.execute(
+                    "DELETE FROM offline_eval_candidates WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM answer_feedback WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM memory_candidates WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM messages WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM conversations WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM voice_practice_turns WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
+                self._conn.execute(
+                    "DELETE FROM voice_practice_sessions WHERE kb_id = ? AND owner_id = ?",
+                    (kb_id, owner_id),
+                )
                 self._conn.execute(
                     "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND owner_id = ? AND scope = 'kb'",
                     (_now(), kb_id, owner_id),
                 )
             else:
-                self._conn.execute("DELETE FROM offline_eval_candidates WHERE kb_id = ?", (kb_id,))
-                self._conn.execute("DELETE FROM answer_feedback WHERE kb_id = ?", (kb_id,))
-                self._conn.execute("DELETE FROM memory_candidates WHERE kb_id = ?", (kb_id,))
+                self._conn.execute(
+                    "DELETE FROM offline_eval_candidates WHERE kb_id = ?", (kb_id,)
+                )
+                self._conn.execute(
+                    "DELETE FROM answer_feedback WHERE kb_id = ?", (kb_id,)
+                )
+                self._conn.execute(
+                    "DELETE FROM memory_candidates WHERE kb_id = ?", (kb_id,)
+                )
                 self._conn.execute("DELETE FROM messages WHERE kb_id = ?", (kb_id,))
-                self._conn.execute("DELETE FROM conversations WHERE kb_id = ?", (kb_id,))
-                self._conn.execute("DELETE FROM voice_practice_turns WHERE kb_id = ?", (kb_id,))
-                self._conn.execute("DELETE FROM voice_practice_sessions WHERE kb_id = ?", (kb_id,))
+                self._conn.execute(
+                    "DELETE FROM conversations WHERE kb_id = ?", (kb_id,)
+                )
+                self._conn.execute(
+                    "DELETE FROM voice_practice_turns WHERE kb_id = ?", (kb_id,)
+                )
+                self._conn.execute(
+                    "DELETE FROM voice_practice_sessions WHERE kb_id = ?", (kb_id,)
+                )
                 self._conn.execute(
                     "UPDATE memories SET source_status = 'deleted', enabled = 0, updated_at = ? WHERE kb_id = ? AND scope = 'kb'",
                     (_now(), kb_id),
@@ -993,7 +1105,9 @@ class AppStore:
             "id": uuid4().hex,
             "owner_id": owner_id,
             "kb_id": kb_id,
-            "goal": goal if goal in {"free", "recall", "interview", "review"} else "free",
+            "goal": goal
+            if goal in {"free", "recall", "interview", "review"}
+            else "free",
             "status": "active",
             "conversation_id": conversation_id or "",
             "summary": "",
@@ -1015,7 +1129,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self._public_voice_session(row)
 
-    def get_voice_practice_session(self, session_id: str, owner_id: str, kb_id: str | None = None) -> dict[str, Any] | None:
+    def get_voice_practice_session(
+        self, session_id: str, owner_id: str, kb_id: str | None = None
+    ) -> dict[str, Any] | None:
         sql = "SELECT * FROM voice_practice_sessions WHERE id = ? AND owner_id = ?"
         params: list[Any] = [session_id, owner_id]
         if kb_id is not None:
@@ -1024,7 +1140,9 @@ class AppStore:
         row = self._one(sql, tuple(params))
         return self._public_voice_session(row) if row else None
 
-    def list_voice_practice_sessions(self, owner_id: str, kb_id: str, limit: int = 30) -> list[dict[str, Any]]:
+    def list_voice_practice_sessions(
+        self, owner_id: str, kb_id: str, limit: int = 30
+    ) -> list[dict[str, Any]]:
         rows = self._all(
             """SELECT
                    sessions.*,
@@ -1069,9 +1187,19 @@ class AppStore:
         current = self.get_voice_practice_session(session_id, owner_id, kb_id)
         if current is None:
             return None
-        next_status = status if status in {"active", "completed", "cancelled", "failed"} else current["status"]
-        next_summary = current["summary"] if summary is None else str(summary or "")[:2000]
-        next_conversation = current["conversation_id"] if conversation_id is None else str(conversation_id or "")
+        next_status = (
+            status
+            if status in {"active", "completed", "cancelled", "failed"}
+            else current["status"]
+        )
+        next_summary = (
+            current["summary"] if summary is None else str(summary or "")[:2000]
+        )
+        next_conversation = (
+            current["conversation_id"]
+            if conversation_id is None
+            else str(conversation_id or "")
+        )
         ended_at = current.get("ended_at") or ""
         if next_status in {"completed", "cancelled", "failed"} and not ended_at:
             ended_at = _now()
@@ -1080,7 +1208,16 @@ class AppStore:
                 """UPDATE voice_practice_sessions
                    SET status = ?, summary = ?, conversation_id = ?, updated_at = ?, ended_at = ?
                    WHERE id = ? AND owner_id = ? AND kb_id = ?""",
-                (next_status, next_summary, next_conversation, _now(), ended_at, session_id, owner_id, kb_id),
+                (
+                    next_status,
+                    next_summary,
+                    next_conversation,
+                    _now(),
+                    ended_at,
+                    session_id,
+                    owner_id,
+                    kb_id,
+                ),
             )
             _commit_with_retry(self._conn)
         return self.get_voice_practice_session(session_id, owner_id, kb_id)
@@ -1125,7 +1262,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return self._public_voice_turn(row)
 
-    def list_voice_practice_turns(self, session_id: str, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
+    def list_voice_practice_turns(
+        self, session_id: str, owner_id: str, kb_id: str
+    ) -> list[dict[str, Any]]:
         rows = self._all(
             """SELECT * FROM voice_practice_turns
                WHERE session_id = ? AND owner_id = ? AND kb_id = ?
@@ -1134,15 +1273,23 @@ class AppStore:
         )
         return [self._public_voice_turn(row) for row in rows]
 
-    def get_voice_practice_turn(self, turn_id: str, owner_id: str) -> dict[str, Any] | None:
+    def get_voice_practice_turn(
+        self, turn_id: str, owner_id: str
+    ) -> dict[str, Any] | None:
         row = self._one(
             "SELECT * FROM voice_practice_turns WHERE id = ? AND owner_id = ?",
             (turn_id, owner_id),
         )
         return self._public_voice_turn(row) if row else None
 
-    def update_voice_practice_turn_audio(self, turn_id: str, owner_id: str, audio_status: str) -> dict[str, Any] | None:
-        status = audio_status if audio_status in {"not_requested", "generating", "ready", "failed"} else "failed"
+    def update_voice_practice_turn_audio(
+        self, turn_id: str, owner_id: str, audio_status: str
+    ) -> dict[str, Any] | None:
+        status = (
+            audio_status
+            if audio_status in {"not_requested", "generating", "ready", "failed"}
+            else "failed"
+        )
         with self._lock:
             self._conn.execute(
                 "UPDATE voice_practice_turns SET audio_status = ? WHERE id = ? AND owner_id = ?",
@@ -1285,12 +1432,14 @@ class AppStore:
             "ended_at": data.get("ended_at") or "",
         }
         if "turn_count" in data:
-            session.update({
-                "turn_count": int(data.get("turn_count") or 0),
-                "completed_turn_count": int(data.get("completed_turn_count") or 0),
-                "cited_turn_count": int(data.get("cited_turn_count") or 0),
-                "first_transcript": str(data.get("first_transcript") or ""),
-            })
+            session.update(
+                {
+                    "turn_count": int(data.get("turn_count") or 0),
+                    "completed_turn_count": int(data.get("completed_turn_count") or 0),
+                    "cited_turn_count": int(data.get("cited_turn_count") or 0),
+                    "first_transcript": str(data.get("first_transcript") or ""),
+                }
+            )
         return session
 
     def _public_voice_turn(self, row: Any) -> dict[str, Any]:

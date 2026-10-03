@@ -26,4 +26,3 @@ def test_generic_text_formats_produce_chunks(suffix: str) -> None:
     assert len(chunks) > 1
     assert all(chunk["content"] for chunk in chunks)
     assert all(chunk["tokens"] <= 40 for chunk in chunks)
-

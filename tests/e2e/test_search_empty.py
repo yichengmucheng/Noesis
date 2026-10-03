@@ -35,7 +35,9 @@ def _wait(port: int, proc: subprocess.Popen, log_path: Path) -> None:
             tail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
             raise RuntimeError(tail or last)
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=2
+            ) as response:
                 if response.status == 200:
                     return
         except Exception as exc:
@@ -45,7 +47,9 @@ def _wait(port: int, proc: subprocess.Popen, log_path: Path) -> None:
 
 
 def test_search_page_clears_results_and_shows_empty_reason(tmp_path):
-    if os.getenv("APP_ENV", "").strip().lower() == "production" and "9621" in os.getenv("PORT", ""):
+    if os.getenv("APP_ENV", "").strip().lower() == "production" and "9621" in os.getenv(
+        "PORT", ""
+    ):
         pytest.fail("这个测试不能连接 9621")
     _free(PORT)
     root = tmp_path / "empty-ui"
@@ -55,45 +59,66 @@ def test_search_page_clears_results_and_shows_empty_reason(tmp_path):
     inputs.mkdir()
     from lightrag.product_storage import save_shell
 
-    save_shell(working, {
-        "kbs": [{
-            "id": "kb-empty",
-            "name": "空态库",
-            "owner_id": "local-owner",
-            "description": "",
-            "settings": {"retrieval_mode": "vector", "graph_enabled": True},
-            "graph_config": {},
-        }],
-    })
+    save_shell(
+        working,
+        {
+            "kbs": [
+                {
+                    "id": "kb-empty",
+                    "name": "空态库",
+                    "owner_id": "local-owner",
+                    "description": "",
+                    "settings": {"retrieval_mode": "vector", "graph_enabled": True},
+                    "graph_config": {},
+                }
+            ],
+        },
+    )
     env = os.environ.copy()
     for key in list(env):
-        if any(word in key.upper() for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE")):
+        if any(
+            word in key.upper()
+            for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE")
+        ):
             env.pop(key, None)
-    env.update({
-        "APP_ENV": "development",
-        "PRODUCT_AUTH": "0",
-        "HOST": "127.0.0.1",
-        "PORT": str(PORT),
-        "WORKING_DIR": str(working),
-        "INPUT_DIR": str(inputs),
-        "DATABASE_URL": "",
-        "EMBEDDING_BINDING": "openai",
-        "EMBEDDING_MODEL": "test-embed",
-        "EMBEDDING_DIM": "8",
-        "EMBEDDING_BINDING_HOST": "http://127.0.0.1:9/v1",
-        "LLM_BINDING": "openai",
-        "LLM_MODEL": "test-model",
-        "LLM_BINDING_HOST": "http://127.0.0.1:9/v1",
-        "PYTHONPATH": str(PROJECT),
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "NO_PROXY": "127.0.0.1,localhost",
-    })
+    env.update(
+        {
+            "APP_ENV": "development",
+            "PRODUCT_AUTH": "0",
+            "HOST": "127.0.0.1",
+            "PORT": str(PORT),
+            "WORKING_DIR": str(working),
+            "INPUT_DIR": str(inputs),
+            "DATABASE_URL": "",
+            "EMBEDDING_BINDING": "openai",
+            "EMBEDDING_MODEL": "test-embed",
+            "EMBEDDING_DIM": "8",
+            "EMBEDDING_BINDING_HOST": "http://127.0.0.1:9/v1",
+            "LLM_BINDING": "openai",
+            "LLM_MODEL": "test-model",
+            "LLM_BINDING_HOST": "http://127.0.0.1:9/v1",
+            "PYTHONPATH": str(PROJECT),
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "NO_PROXY": "127.0.0.1,localhost",
+        }
+    )
     (root / ".env").write_text(
-        "\n".join(f"{key}={env[key]}" for key in (
-            "APP_ENV", "PRODUCT_AUTH", "HOST", "PORT", "WORKING_DIR", "INPUT_DIR", "DATABASE_URL",
-            "EMBEDDING_BINDING", "EMBEDDING_MODEL", "EMBEDDING_DIM",
-        )),
+        "\n".join(
+            f"{key}={env[key]}"
+            for key in (
+                "APP_ENV",
+                "PRODUCT_AUTH",
+                "HOST",
+                "PORT",
+                "WORKING_DIR",
+                "INPUT_DIR",
+                "DATABASE_URL",
+                "EMBEDDING_BINDING",
+                "EMBEDDING_MODEL",
+                "EMBEDDING_DIM",
+            )
+        ),
         encoding="utf-8",
     )
     log_path = root / "server.log"
@@ -119,21 +144,23 @@ def test_search_page_clears_results_and_shows_empty_reason(tmp_path):
             query = body.get("query") or ""
             if "津门" in query:
                 payload = {
-                    "chunks": [{
-                        "chunk_id": "doc-edu-c0001",
-                        "content": "林知夏2018至2022年就读津门财经大学",
-                        "excerpt": "林知夏2018至2022年就读津门财经大学",
-                        "document_id": "doc-edu",
-                        "unit_id": "t0001",
-                        "kb_id": "kb-empty",
-                        "owner_id": "local-owner",
-                        "score": 0.91,
-                        "ranking_score": 0.8,
-                        "admission_score": 0.91,
-                        "raw_score": 0.8,
-                        "channel": "dense",
-                        "path": "",
-                    }],
+                    "chunks": [
+                        {
+                            "chunk_id": "doc-edu-c0001",
+                            "content": "林知夏2018至2022年就读津门财经大学",
+                            "excerpt": "林知夏2018至2022年就读津门财经大学",
+                            "document_id": "doc-edu",
+                            "unit_id": "t0001",
+                            "kb_id": "kb-empty",
+                            "owner_id": "local-owner",
+                            "score": 0.91,
+                            "ranking_score": 0.8,
+                            "admission_score": 0.91,
+                            "raw_score": 0.8,
+                            "channel": "dense",
+                            "path": "",
+                        }
+                    ],
                     "empty_reason": None,
                     "status": "ok",
                     "query_plan": {
@@ -154,13 +181,20 @@ def test_search_page_clears_results_and_shows_empty_reason(tmp_path):
                 }
             else:
                 payload = {"chunks": [], "empty_reason": "没有达到相关度要求的内容"}
-            route.fulfill(status=200, content_type="application/json", body=json.dumps(payload, ensure_ascii=False))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(payload, ensure_ascii=False),
+            )
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(args=["--no-proxy-server"])
             page = browser.new_page()
             page.route("**/api/v1/chat/search-test", fulfill)
-            page.goto(f"http://127.0.0.1:{PORT}/console/kb/kb-empty/search", wait_until="domcontentloaded")
+            page.goto(
+                f"http://127.0.0.1:{PORT}/console/kb/kb-empty/search",
+                wait_until="domcontentloaded",
+            )
             page.get_by_role("heading", name="检索测试").wait_for()
             box = page.get_by_placeholder("例如：这份资料的核心结论是什么")
 

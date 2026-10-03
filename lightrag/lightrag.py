@@ -536,19 +536,44 @@ class LightRAG:
             namespace=NameSpace.VECTOR_STORE_ENTITIES,
             workspace=self.workspace,
             embedding_func=self.embedding_func,
-            meta_fields={"entity_name", "source_id", "content", "file_path", "kb_id", "owner_id", "doc_id"},
+            meta_fields={
+                "entity_name",
+                "source_id",
+                "content",
+                "file_path",
+                "kb_id",
+                "owner_id",
+                "doc_id",
+            },
         )
         self.relationships_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=NameSpace.VECTOR_STORE_RELATIONSHIPS,
             workspace=self.workspace,
             embedding_func=self.embedding_func,
-            meta_fields={"src_id", "tgt_id", "source_id", "content", "file_path", "kb_id", "owner_id", "doc_id"},
+            meta_fields={
+                "src_id",
+                "tgt_id",
+                "source_id",
+                "content",
+                "file_path",
+                "kb_id",
+                "owner_id",
+                "doc_id",
+            },
         )
         self.chunks_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=NameSpace.VECTOR_STORE_CHUNKS,
             workspace=self.workspace,
             embedding_func=self.embedding_func,
-            meta_fields={"full_doc_id", "content", "file_path", "kb_id", "owner_id", "doc_id", "chunk_id"},
+            meta_fields={
+                "full_doc_id",
+                "content",
+                "file_path",
+                "kb_id",
+                "owner_id",
+                "doc_id",
+                "chunk_id",
+            },
         )
 
         # Initialize document status storage
@@ -1551,7 +1576,9 @@ class LightRAG:
                             try:
                                 from lightrag.product_parse import bind_pipeline_chunks
 
-                                bind_pipeline_chunks(chunks, file_path, doc_id, self.working_dir)
+                                bind_pipeline_chunks(
+                                    chunks, file_path, doc_id, self.working_dir
+                                )
                             except Exception as exc:
                                 logger.warning("切块位置标注跳过：%s", exc)
 

@@ -16,7 +16,13 @@ from typing import Any
 from uuid import uuid4
 
 ACTIVE_STATUSES = ("queued", "running", "cancel_requested", "cancelling")
-TERMINAL_STATUSES = ("succeeded", "failed", "timeout", "cancelled", "consistency_failed")
+TERMINAL_STATUSES = (
+    "succeeded",
+    "failed",
+    "timeout",
+    "cancelled",
+    "consistency_failed",
+)
 RETRYABLE_STATUSES = ("failed", "timeout", "consistency_failed")
 
 _SCHEMA = """
@@ -194,7 +200,9 @@ class ProductStore:
     def latest_for_doc(self, user_id: str, doc_id: str) -> dict[str, Any] | None:
         raise NotImplementedError
 
-    def transition(self, job_id: str, status: str, **fields: Any) -> dict[str, Any] | None:
+    def transition(
+        self, job_id: str, status: str, **fields: Any
+    ) -> dict[str, Any] | None:
         raise NotImplementedError
 
     def request_cancel(self, job_id: str, user_id: str) -> dict[str, Any] | None:
@@ -209,7 +217,9 @@ class ProductStore:
     def recover_expired(self) -> int:
         raise NotImplementedError
 
-    def acquire(self, worker_id: str, job_types: list[str] | None = None) -> dict[str, Any] | None:
+    def acquire(
+        self, worker_id: str, job_types: list[str] | None = None
+    ) -> dict[str, Any] | None:
         raise NotImplementedError
 
     def heartbeat(self, job_id: str, worker_id: str) -> bool:
@@ -252,7 +262,9 @@ class _SqlStore(ProductStore):
 
     def find_idempotent(self, key: str) -> dict[str, Any] | None:
         with self._lock:
-            row = self._one("SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,))
+            row = self._one(
+                "SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,)
+            )
         return _row_dict(row) if row else None
 
     def create_job(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -264,7 +276,9 @@ class _SqlStore(ProductStore):
         now = _iso()
         snapshot = fields.get("input_snapshot") or {}
         with self._lock:
-            existing = self._one("SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,))
+            existing = self._one(
+                "SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,)
+            )
             if existing:
                 return _row_dict(existing)
             try:
@@ -292,7 +306,9 @@ class _SqlStore(ProductStore):
                 )
             except Exception as exc:
                 if "UNIQUE" in str(exc).upper() or "unique" in str(exc):
-                    existing = self._one("SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,))
+                    existing = self._one(
+                        "SELECT * FROM product_jobs WHERE idempotency_key = ?", (key,)
+                    )
                     if existing:
                         return _row_dict(existing)
                     active = self._one(
@@ -300,7 +316,10 @@ class _SqlStore(ProductStore):
                         SELECT * FROM product_jobs
                         WHERE doc_id = ? AND job_type = ? AND status IN ('queued', 'running', 'cancel_requested', 'cancelling')
                         """,
-                        (str(fields.get("doc_id") or ""), str(fields.get("job_type") or "")),
+                        (
+                            str(fields.get("doc_id") or ""),
+                            str(fields.get("job_type") or ""),
+                        ),
                     )
                     if active:
                         return _row_dict(active)
@@ -341,13 +360,20 @@ class _SqlStore(ProductStore):
         current = max(1, int(page or 1))
         offset = (current - 1) * size
         with self._lock:
-            total_row = self._one(f"SELECT COUNT(*) AS total FROM product_jobs WHERE {where}", tuple(args))
+            total_row = self._one(
+                f"SELECT COUNT(*) AS total FROM product_jobs WHERE {where}", tuple(args)
+            )
             rows = self._all(
                 f"SELECT * FROM product_jobs WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 tuple(args) + (size, offset),
             )
         total = int((total_row or {}).get("total") or 0)
-        return {"items": [_row_dict(row) for row in rows], "total": total, "page": current, "page_size": size}
+        return {
+            "items": [_row_dict(row) for row in rows],
+            "total": total,
+            "page": current,
+            "page_size": size,
+        }
 
     def latest_for_doc(self, user_id: str, doc_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -357,7 +383,9 @@ class _SqlStore(ProductStore):
             )
         return _row_dict(row) if row else None
 
-    def transition(self, job_id: str, status: str, **fields: Any) -> dict[str, Any] | None:
+    def transition(
+        self, job_id: str, status: str, **fields: Any
+    ) -> dict[str, Any] | None:
         current = self.get_job(job_id)
         if current is None:
             return None
@@ -366,7 +394,9 @@ class _SqlStore(ProductStore):
         assignments = ["status = ?"]
         args: list[Any] = [status]
         for name, value in fields.items():
-            if name in {"input_snapshot", "output_summary"} and not isinstance(value, str):
+            if name in {"input_snapshot", "output_summary"} and not isinstance(
+                value, str
+            ):
                 value = json.dumps(value, ensure_ascii=False)
             assignments.append(f"{name} = ?")
             args.append(value)
@@ -379,7 +409,10 @@ class _SqlStore(ProductStore):
             args.append("")
         args.append(job_id)
         with self._lock:
-            self._exec(f"UPDATE product_jobs SET {', '.join(assignments)} WHERE job_id = ?", tuple(args))
+            self._exec(
+                f"UPDATE product_jobs SET {', '.join(assignments)} WHERE job_id = ?",
+                tuple(args),
+            )
         return self.get_job(job_id)
 
     def request_cancel(self, job_id: str, user_id: str) -> dict[str, Any] | None:
@@ -392,7 +425,13 @@ class _SqlStore(ProductStore):
             return job
         now = _iso()
         if job["status"] == "queued":
-            return self.transition(job_id, "cancelled", cancel_requested_at=now, stage="cancelled", finished_at=now)
+            return self.transition(
+                job_id,
+                "cancelled",
+                cancel_requested_at=now,
+                stage="cancelled",
+                finished_at=now,
+            )
         return self.transition(job_id, "cancel_requested", cancel_requested_at=now)
 
     def request_retry(self, job_id: str, user_id: str) -> dict[str, Any] | None:
@@ -472,7 +511,9 @@ class _SqlStore(ProductStore):
         )
         return int((row or {}).get("total") or 0)
 
-    def acquire(self, worker_id: str, job_types: list[str] | None = None) -> dict[str, Any] | None:
+    def acquire(
+        self, worker_id: str, job_types: list[str] | None = None
+    ) -> dict[str, Any] | None:
         self.recover_expired()
         settings = job_settings()
         now_dt = _now()
@@ -497,11 +538,20 @@ class _SqlStore(ProductStore):
             for row in rows:
                 job = _row_dict(row)
                 if job["status"] != "cancel_requested":
-                    if self._running_count("user_id", job["user_id"], now) >= settings["max_per_user"]:
+                    if (
+                        self._running_count("user_id", job["user_id"], now)
+                        >= settings["max_per_user"]
+                    ):
                         continue
-                    if self._running_count("kb_id", job["kb_id"], now) >= settings["max_per_kb"]:
+                    if (
+                        self._running_count("kb_id", job["kb_id"], now)
+                        >= settings["max_per_kb"]
+                    ):
                         continue
-                if job["attempt"] >= job["max_attempts"] and job["status"] != "cancel_requested":
+                if (
+                    job["attempt"] >= job["max_attempts"]
+                    and job["status"] != "cancel_requested"
+                ):
                     self._exec(
                         """
                         UPDATE product_jobs
@@ -519,10 +569,20 @@ class _SqlStore(ProductStore):
                         attempt = attempt + 1
                     WHERE job_id = ? AND status = ? AND lease_until = ?
                     """,
-                    (worker_id, until, now, now, job["job_id"], job["status"], job["lease_until"]),
+                    (
+                        worker_id,
+                        until,
+                        now,
+                        now,
+                        job["job_id"],
+                        job["status"],
+                        job["lease_until"],
+                    ),
                 )
                 if changed:
-                    taken = self._one("SELECT * FROM product_jobs WHERE job_id = ?", (job["job_id"],))
+                    taken = self._one(
+                        "SELECT * FROM product_jobs WHERE job_id = ?", (job["job_id"],)
+                    )
                     return _row_dict(taken) if taken else None
         return None
 
@@ -537,7 +597,12 @@ class _SqlStore(ProductStore):
                 SET heartbeat_at = ?, lease_until = ?
                 WHERE job_id = ? AND worker_id = ? AND status IN ('running', 'cancel_requested', 'cancelling')
                 """,
-                (_iso(now_dt), _iso(now_dt + timedelta(seconds=settings["lease_seconds"])), job_id, worker_id),
+                (
+                    _iso(now_dt),
+                    _iso(now_dt + timedelta(seconds=settings["lease_seconds"])),
+                    job_id,
+                    worker_id,
+                ),
             )
         return bool(changed)
 
@@ -579,7 +644,9 @@ class _SqlStore(ProductStore):
 
     def get_check(self, check_id: str) -> dict[str, Any] | None:
         with self._lock:
-            row = self._one("SELECT * FROM consistency_checks WHERE check_id = ?", (check_id,))
+            row = self._one(
+                "SELECT * FROM consistency_checks WHERE check_id = ?", (check_id,)
+            )
         if row is None:
             return None
         payload = _loads(str(row.get("payload") or "{}"))
@@ -676,7 +743,10 @@ class PostgresStore(_SqlStore):
                     fetch="exec",
                 )
             except Exception as exc:
-                if "unique" not in str(exc).lower() and "duplicate" not in str(exc).lower():
+                if (
+                    "unique" not in str(exc).lower()
+                    and "duplicate" not in str(exc).lower()
+                ):
                     raise
 
 
@@ -721,7 +791,18 @@ def public_job(job: dict[str, Any]) -> dict[str, Any]:
 
 def _public_message(message: str) -> str:
     lowered = message.lower()
-    if any(word in lowered for word in ("traceback", "token", "cookie", "password", "api_key", "secret", "sk-")):
+    if any(
+        word in lowered
+        for word in (
+            "traceback",
+            "token",
+            "cookie",
+            "password",
+            "api_key",
+            "secret",
+            "sk-",
+        )
+    ):
         return "处理失败"
     if ":\\" in message or message.startswith("/app/") or message.startswith("/users/"):
         return "处理失败"

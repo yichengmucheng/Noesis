@@ -13,22 +13,32 @@ import difflib
 import json
 import os
 import re
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketState
 from pydantic import BaseModel, Field
 
 from lightrag.base import QueryParam
 from lightrag.constants import DEFAULT_ENTITY_TYPES
-from lightrag.utils import generate_track_id, logger
+from lightrag.utils import logger
 
-from lightrag.operate import register_chunk_plan
 from lightrag.answer_pipeline import (
     PROMPT_VERSION,
     redact_text,
@@ -39,9 +49,6 @@ from lightrag.answer_pipeline import (
 )
 from lightrag.product_accounts import (
     LOCAL_OWNER_ID,
-    WRITE_DOC_ID,
-    WRITE_KB_ID,
-    WRITE_OWNER_ID,
     AccountError,
     actor_id,
     create_auth_router,
@@ -58,18 +65,15 @@ from lightrag.product_accounts import (
 )
 from lightrag.product_scope import scope_visible
 from lightrag.product_deletion import (
-    apply_metadata_purge,
     begin_purge,
-    bound_filenames,
-    consistency_report,
-    filenames_used_by_others,
-    mark_job,
     public_job,
     queue_retry,
 )
 from lightrag.search_runtime import run_search_test
 
-from .document_routes import background_delete_documents, pipeline_index_file, sanitize_filename
+from .document_routes import (
+    sanitize_filename,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["product-shell"])
 
@@ -119,9 +123,24 @@ def _voice_local_intent(text: str) -> tuple[str, str] | None:
     """Handle short conversational controls before knowledge retrieval."""
     normalized = re.sub(r"[\s,，。.!！?？、]+", "", str(text or "")).lower()
     finish_phrases = {
-        "结束", "结束吧", "结束对话", "结束通话", "停止", "停止吧", "退出",
-        "再见", "拜拜", "不聊了", "先这样", "就这样", "就到这里",
-        "今天先到这里", "ok结束吧", "okay结束吧", "好的结束吧", "好了结束吧",
+        "结束",
+        "结束吧",
+        "结束对话",
+        "结束通话",
+        "停止",
+        "停止吧",
+        "退出",
+        "再见",
+        "拜拜",
+        "不聊了",
+        "先这样",
+        "就这样",
+        "就到这里",
+        "今天先到这里",
+        "ok结束吧",
+        "okay结束吧",
+        "好的结束吧",
+        "好了结束吧",
     }
     if normalized in finish_phrases:
         return "finish", "好的，那我们先聊到这里。需要的时候再找我。"
@@ -220,7 +239,10 @@ class ShellStore:
             )
             changed = True
         for kb in data["kbs"]:
-            if kb.get("id") == DEFAULT_KB_ID and kb.get("name") == "发动机故障 A3 知识库":
+            if (
+                kb.get("id") == DEFAULT_KB_ID
+                and kb.get("name") == "发动机故障 A3 知识库"
+            ):
                 kb["name"] = "默认知识库"
                 kb["description"] = "当前工作区里已经入库的文档与图谱"
                 changed = True
@@ -276,7 +298,9 @@ def _numbers_changed(left: str, right: str) -> bool:
     return set(pattern.findall(left or "")) != set(pattern.findall(right or ""))
 
 
-def _text_diffs(old: str, new: str, ignore_ws: bool, mark_numbers: bool, limit: int = 40) -> list[dict[str, str]]:
+def _text_diffs(
+    old: str, new: str, ignore_ws: bool, mark_numbers: bool, limit: int = 40
+) -> list[dict[str, str]]:
     old_lines = _norm_lines(old, ignore_ws)
     new_lines = _norm_lines(new, ignore_ws)
     diffs: list[dict[str, str]] = []
@@ -287,13 +311,17 @@ def _text_diffs(old: str, new: str, ignore_ws: bool, mark_numbers: bool, limit: 
             continue
         old_text = "\n".join(old_lines[i1:i2])[:500]
         new_text = "\n".join(new_lines[j1:j2])[:500]
-        severity = "高" if mark_numbers and _numbers_changed(old_text, new_text) else "中"
-        diffs.append({
-            "type": labels.get(tag, tag),
-            "old": old_text,
-            "new": new_text,
-            "severity": severity,
-        })
+        severity = (
+            "高" if mark_numbers and _numbers_changed(old_text, new_text) else "中"
+        )
+        diffs.append(
+            {
+                "type": labels.get(tag, tag),
+                "old": old_text,
+                "new": new_text,
+                "severity": severity,
+            }
+        )
         if len(diffs) >= limit:
             break
     return diffs
@@ -343,15 +371,23 @@ def _doc_in_kb(public: dict[str, Any], kb_id: str, data: dict[str, Any]) -> bool
         return row.get("kb_id") == kb_id and not row.get("deleted_at")
     path = str(public.get("file_path") or "").replace("\\", "/")
     for item in index.values():
-        if not isinstance(item, dict) or item.get("deleted_at") or item.get("kb_id") != kb_id:
+        if (
+            not isinstance(item, dict)
+            or item.get("deleted_at")
+            or item.get("kb_id") != kb_id
+        ):
             continue
         key = str(item.get("storage_key") or "")
         if key and key in path:
             return True
-    return _belongs(str(public.get("name") or ""), kb_id, data.get("file_bindings") or {})
+    return _belongs(
+        str(public.get("name") or ""), kb_id, data.get("file_bindings") or {}
+    )
 
 
-def _node_in_scope(record: dict[str, Any], kb_id: str, bindings: dict[str, str]) -> bool:
+def _node_in_scope(
+    record: dict[str, Any], kb_id: str, bindings: dict[str, str]
+) -> bool:
     return scope_visible(record, kb_id, bindings)
 
 
@@ -444,7 +480,9 @@ async def _list_doc_records(rag) -> list[dict[str, Any]]:
         DocStatus.PROCESSED,
         DocStatus.FAILED,
     )
-    grouped = await asyncio.gather(*[rag.get_docs_by_status(status) for status in statuses])
+    grouped = await asyncio.gather(
+        *[rag.get_docs_by_status(status) for status in statuses]
+    )
     records: list[dict[str, Any]] = []
     for bucket in grouped:
         for doc_id, doc in bucket.items():
@@ -549,7 +587,9 @@ def _graph_document_refs(
         if row.get("kb_id") != kb_id or row.get("deleted_at"):
             continue
         seen.add(doc_id)
-        refs.append({"document_id": doc_id, "name": str(row.get("display_name") or "资料")})
+        refs.append(
+            {"document_id": doc_id, "name": str(row.get("display_name") or "资料")}
+        )
     for name in _kb_filenames(props.get("file_path"), kb_id, bindings):
         key = f"file:{name}"
         if key in seen:
@@ -754,7 +794,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             return "新会话"
         return text[:32] + ("…" if len(text) > 32 else "")
 
-    async def _bind_user(request: Request = None, authorization: str | None = Header(default=None)):
+    async def _bind_user(
+        request: Request = None, authorization: str | None = Header(default=None)
+    ):
         # WebSocket routes do not receive an HTTP Request object. Their own
         # handler performs token validation from headers/query/subprotocol.
         if request is None:
@@ -872,7 +914,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             items.extend(chunks)
         return items
 
-    def _build_comparison(body: ComparisonBody, settings: dict[str, Any], old_doc, old_chunks, new_doc, new_chunks, qa_pairs):
+    def _build_comparison(
+        body: ComparisonBody,
+        settings: dict[str, Any],
+        old_doc,
+        old_chunks,
+        new_doc,
+        new_chunks,
+        qa_pairs,
+    ):
         ignore_ws = bool(settings.get("ignore_whitespace", True))
         mark_numbers = bool(settings.get("mark_number_changes", True))
         only_changes = bool(settings.get("only_changes", True))
@@ -890,31 +940,59 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             if same:
                 if only_changes:
                     continue
-                chunk_diffs.append({
-                    "type": "相同",
+                chunk_diffs.append(
+                    {
+                        "type": "相同",
+                        "index": index + 1,
+                        "old": _clean_text(left, 240),
+                        "new": _clean_text(right, 240),
+                        "severity": "低",
+                    }
+                )
+                continue
+            chunk_diffs.append(
+                {
+                    "type": "修改",
                     "index": index + 1,
                     "old": _clean_text(left, 240),
                     "new": _clean_text(right, 240),
-                    "severity": "低",
-                })
-                continue
-            chunk_diffs.append({
-                "type": "修改",
-                "index": index + 1,
-                "old": _clean_text(left, 240),
-                "new": _clean_text(right, 240),
-                "severity": "高" if mark_numbers and _numbers_changed(left, right) else "中",
-            })
+                    "severity": "高"
+                    if mark_numbers and _numbers_changed(left, right)
+                    else "中",
+                }
+            )
         for chunk in old_chunks[shared:]:
-            chunk_diffs.append({"type": "删除", "index": chunk["index"], "old": chunk["excerpt"], "new": "", "severity": "中"})
+            chunk_diffs.append(
+                {
+                    "type": "删除",
+                    "index": chunk["index"],
+                    "old": chunk["excerpt"],
+                    "new": "",
+                    "severity": "中",
+                }
+            )
         for chunk in new_chunks[shared:]:
-            chunk_diffs.append({"type": "新增", "index": chunk["index"], "old": "", "new": chunk["excerpt"], "severity": "中"})
+            chunk_diffs.append(
+                {
+                    "type": "新增",
+                    "index": chunk["index"],
+                    "old": "",
+                    "new": chunk["excerpt"],
+                    "severity": "中",
+                }
+            )
         chunk_diffs = chunk_diffs[:40]
 
         scoped_pairs = [item for item in qa_pairs if item.get("kb_id") == body.kb_id]
-        old_qa = [item for item in scoped_pairs if item.get("doc_id") == body.doc_id_old]
-        new_qa = [item for item in scoped_pairs if item.get("doc_id") == body.doc_id_new]
-        new_by_q = {re.sub(r"\s+", "", item.get("question") or ""): item for item in new_qa}
+        old_qa = [
+            item for item in scoped_pairs if item.get("doc_id") == body.doc_id_old
+        ]
+        new_qa = [
+            item for item in scoped_pairs if item.get("doc_id") == body.doc_id_new
+        ]
+        new_by_q = {
+            re.sub(r"\s+", "", item.get("question") or ""): item for item in new_qa
+        }
         qa_diffs = []
         seen = set()
         for item in old_qa:
@@ -922,51 +1000,70 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             seen.add(key)
             other = new_by_q.get(key)
             if other is None:
-                qa_diffs.append({
-                    "type": "仅旧文档",
-                    "question": item.get("question"),
-                    "old": _clean_text(item.get("answer"), 240),
-                    "new": "",
-                    "severity": "中",
-                })
-            elif _clean_text(item.get("answer"), 240) != _clean_text(other.get("answer"), 240):
-                qa_diffs.append({
-                    "type": "答案不同",
-                    "question": item.get("question"),
-                    "old": _clean_text(item.get("answer"), 240),
-                    "new": _clean_text(other.get("answer"), 240),
-                    "severity": "高" if mark_numbers and _numbers_changed(item.get("answer") or "", other.get("answer") or "") else "中",
-                })
+                qa_diffs.append(
+                    {
+                        "type": "仅旧文档",
+                        "question": item.get("question"),
+                        "old": _clean_text(item.get("answer"), 240),
+                        "new": "",
+                        "severity": "中",
+                    }
+                )
+            elif _clean_text(item.get("answer"), 240) != _clean_text(
+                other.get("answer"), 240
+            ):
+                qa_diffs.append(
+                    {
+                        "type": "答案不同",
+                        "question": item.get("question"),
+                        "old": _clean_text(item.get("answer"), 240),
+                        "new": _clean_text(other.get("answer"), 240),
+                        "severity": "高"
+                        if mark_numbers
+                        and _numbers_changed(
+                            item.get("answer") or "", other.get("answer") or ""
+                        )
+                        else "中",
+                    }
+                )
         for item in new_qa:
             key = re.sub(r"\s+", "", item.get("question") or "")
             if key in seen:
                 continue
-            qa_diffs.append({
-                "type": "仅新文档",
-                "question": item.get("question"),
-                "old": "",
-                "new": _clean_text(item.get("answer"), 240),
-                "severity": "中",
-            })
+            qa_diffs.append(
+                {
+                    "type": "仅新文档",
+                    "question": item.get("question"),
+                    "old": "",
+                    "new": _clean_text(item.get("answer"), 240),
+                    "severity": "中",
+                }
+            )
         old_questions = "\n".join(re.findall(r"[^\n。！]{6,80}[？?]", old_text)[:12])
         new_questions = "\n".join(re.findall(r"[^\n。！]{6,80}[？?]", new_text)[:12])
-        for diff in _text_diffs(old_questions, new_questions, ignore_ws, mark_numbers, 20):
-            qa_diffs.append({
-                "type": "文档问句" + diff["type"],
-                "question": diff["new"] or diff["old"],
-                "old": diff["old"],
-                "new": diff["new"],
-                "severity": diff["severity"],
-            })
-        if not qa_diffs:
-            for diff in file_diffs[:8]:
-                qa_diffs.append({
-                    "type": "要点" + diff["type"],
-                    "question": (diff["new"] or diff["old"])[:80],
+        for diff in _text_diffs(
+            old_questions, new_questions, ignore_ws, mark_numbers, 20
+        ):
+            qa_diffs.append(
+                {
+                    "type": "文档问句" + diff["type"],
+                    "question": diff["new"] or diff["old"],
                     "old": diff["old"],
                     "new": diff["new"],
                     "severity": diff["severity"],
-                })
+                }
+            )
+        if not qa_diffs:
+            for diff in file_diffs[:8]:
+                qa_diffs.append(
+                    {
+                        "type": "要点" + diff["type"],
+                        "question": (diff["new"] or diff["old"])[:80],
+                        "old": diff["old"],
+                        "new": diff["new"],
+                        "severity": diff["severity"],
+                    }
+                )
         return {
             "task_id": uuid4().hex,
             "kb_id": body.kb_id,
@@ -994,7 +1091,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         _find_kb(data, kb_id)
         items = [row for row in data["comparisons"] if row.get("kb_id") == kb_id]
         if compare_type:
-            items = [row for row in items if row.get("compare_type", "file") == compare_type]
+            items = [
+                row for row in items if row.get("compare_type", "file") == compare_type
+            ]
         return {"items": items}
 
     @router.post("/kb/comparison")
@@ -1005,7 +1104,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         kb = _find_kb(data, body.kb_id)
         old_doc, old_chunks = await _doc_chunks(body.doc_id_old)
         new_doc, new_chunks = await _doc_chunks(body.doc_id_new)
-        task = _build_comparison(body, kb["settings"], old_doc, old_chunks, new_doc, new_chunks, data.get("qa_pairs") or [])
+        task = _build_comparison(
+            body,
+            kb["settings"],
+            old_doc,
+            old_chunks,
+            new_doc,
+            new_chunks,
+            data.get("qa_pairs") or [],
+        )
         data["comparisons"].insert(0, task)
         await _write(data)
         return task
@@ -1019,7 +1126,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 return row
         raise HTTPException(status_code=404, detail="比对任务不存在")
 
-    def _audit_item(data: dict[str, Any], item_id: str, name: str, action_type: str, chunk_info: str, updated_at: str, default_status: str) -> dict[str, Any]:
+    def _audit_item(
+        data: dict[str, Any],
+        item_id: str,
+        name: str,
+        action_type: str,
+        chunk_info: str,
+        updated_at: str,
+        default_status: str,
+    ) -> dict[str, Any]:
         saved = data["audits"].get(item_id, {})
         return {
             "id": item_id,
@@ -1041,16 +1156,30 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             for qa in data.get("qa_pairs") or []:
                 if qa.get("kb_id") != kb_id:
                     continue
-                items.append(_audit_item(
-                    data, qa["id"], qa.get("question") or "问答", "问答",
-                    _clean_text(qa.get("answer"), 80), qa.get("updated_at") or "", default_status,
-                ))
+                items.append(
+                    _audit_item(
+                        data,
+                        qa["id"],
+                        qa.get("question") or "问答",
+                        "问答",
+                        _clean_text(qa.get("answer"), 80),
+                        qa.get("updated_at") or "",
+                        default_status,
+                    )
+                )
         elif item_type == "chunk":
             for chunk in await _kb_chunks(kb_id, data):
-                items.append(_audit_item(
-                    data, chunk["chunk_id"], f"{chunk['doc_name']} · 第 {chunk['index']} 块", "文本块",
-                    chunk["excerpt"], chunk["updated_at"], default_status,
-                ))
+                items.append(
+                    _audit_item(
+                        data,
+                        chunk["chunk_id"],
+                        f"{chunk['doc_name']} · 第 {chunk['index']} 块",
+                        "文本块",
+                        chunk["excerpt"],
+                        chunk["updated_at"],
+                        default_status,
+                    )
+                )
         else:
             records = await _list_doc_records(rag)
             for row in records:
@@ -1059,11 +1188,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     continue
                 if public["status"] != "ready":
                     continue
-                items.append(_audit_item(
-                    data, public["id"], public["name"], "入库抽取",
-                    f"{public['chunk_count']} 段 · {public['char_count']} 字",
-                    public["updated_at"], default_status,
-                ))
+                items.append(
+                    _audit_item(
+                        data,
+                        public["id"],
+                        public["name"],
+                        "入库抽取",
+                        f"{public['chunk_count']} 段 · {public['char_count']} 字",
+                        public["updated_at"],
+                        default_status,
+                    )
+                )
         if status:
             items = [item for item in items if item["status"] == status]
         return {"items": items, "total": len(items), "item_type": item_type}
@@ -1071,10 +1206,16 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     @router.put("/kb/audit/{item_id}")
     async def review_audit(item_id: str, kb_id: str, action: str, comment: str = ""):
         if action not in {"approved", "rejected"}:
-            raise HTTPException(status_code=400, detail="action 只能是 approved 或 rejected")
+            raise HTTPException(
+                status_code=400, detail="action 只能是 approved 或 rejected"
+            )
         data = await _read()
         kb = _find_kb(data, kb_id)
-        if action == "rejected" and kb["settings"].get("audit_reject_comment") and not (comment or "").strip():
+        if (
+            action == "rejected"
+            and kb["settings"].get("audit_reject_comment")
+            and not (comment or "").strip()
+        ):
             raise HTTPException(status_code=400, detail="拒绝时需要填写原因")
         data["audits"][item_id] = {
             "kb_id": kb_id,
@@ -1118,7 +1259,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
 
         return open_store(Path(rag.working_dir) / "product_jobs.sqlite")
 
-    def _public_task(job_id: str, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _public_task(
+        job_id: str, fallback: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         from lightrag.product_db import public_job
 
         job = _task_store().get_job(job_id)
@@ -1129,15 +1272,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     def _enqueue_purge(shell_job: dict[str, Any], kb_id: str) -> dict[str, Any]:
         from lightrag.product_db import public_job
 
-        job = _task_store().create_job({
-            "job_id": shell_job["job_id"],
-            "job_type": "purge",
-            "user_id": actor_id(),
-            "kb_id": kb_id,
-            "doc_id": "",
-            "idempotency_key": f"purge:{kb_id}:{shell_job['job_id']}",
-            "input_snapshot": {"kb_id": kb_id},
-        })
+        job = _task_store().create_job(
+            {
+                "job_id": shell_job["job_id"],
+                "job_type": "purge",
+                "user_id": actor_id(),
+                "kb_id": kb_id,
+                "doc_id": "",
+                "idempotency_key": f"purge:{kb_id}:{shell_job['job_id']}",
+                "input_snapshot": {"kb_id": kb_id},
+            }
+        )
         return public_job(job)
 
     def _enqueue_existing_purge(shell_job: dict[str, Any]) -> None:
@@ -1150,7 +1295,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             store.request_retry(existing["job_id"], actor_id())
 
     def _owned_job(data: dict[str, Any], job_id: str) -> dict[str, Any]:
-        job = next((item for item in data.get("purge_jobs") or [] if item.get("job_id") == job_id), None)
+        job = next(
+            (
+                item
+                for item in data.get("purge_jobs") or []
+                if item.get("job_id") == job_id
+            ),
+            None,
+        )
         if job is None:
             raise HTTPException(status_code=404, detail="任务不存在")
         kb = _kb_by_id(data, str(job.get("kb_id") or ""))
@@ -1160,8 +1312,6 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         return job
 
     def _owned_task(job_id: str) -> dict[str, Any]:
-        from lightrag.product_db import public_job
-
         job = _task_store().get_job(job_id)
         if job is None or job.get("user_id") != actor_id():
             raise HTTPException(status_code=404, detail="任务不存在")
@@ -1174,11 +1324,22 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         return public_job(_owned_task(job_id))
 
     @router.get("/jobs")
-    async def list_jobs(kb_id: str = "", doc_id: str = "", status: str = "", page: int = 1, page_size: int = 20):
+    async def list_jobs(
+        kb_id: str = "",
+        doc_id: str = "",
+        status: str = "",
+        page: int = 1,
+        page_size: int = 20,
+    ):
         from lightrag.product_db import public_job
 
         found = _task_store().list_jobs(
-            user_id=actor_id(), kb_id=kb_id, doc_id=doc_id, status=status, page=page, page_size=page_size
+            user_id=actor_id(),
+            kb_id=kb_id,
+            doc_id=doc_id,
+            status=status,
+            page=page,
+            page_size=page_size,
         )
         found["items"] = [public_job(item) for item in found["items"]]
         return found
@@ -1187,17 +1348,27 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def list_document_jobs(doc_id: str, page: int = 1, page_size: int = 20):
         from lightrag.product_db import public_job
 
-        found = _task_store().list_jobs(user_id=actor_id(), doc_id=doc_id, page=page, page_size=page_size)
+        found = _task_store().list_jobs(
+            user_id=actor_id(), doc_id=doc_id, page=page, page_size=page_size
+        )
         found["items"] = [public_job(item) for item in found["items"]]
         return found
 
     @router.get("/kb/{kb_id}/jobs")
-    async def list_kb_jobs(kb_id: str, status: str = "", page: int = 1, page_size: int = 20):
+    async def list_kb_jobs(
+        kb_id: str, status: str = "", page: int = 1, page_size: int = 20
+    ):
         data = await _read()
         _find_kb(data, kb_id)
         from lightrag.product_db import public_job
 
-        found = _task_store().list_jobs(user_id=actor_id(), kb_id=kb_id, status=status, page=page, page_size=page_size)
+        found = _task_store().list_jobs(
+            user_id=actor_id(),
+            kb_id=kb_id,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
         found["items"] = [public_job(item) for item in found["items"]]
         return found
 
@@ -1263,7 +1434,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         from lightrag.product_storage import deep_check
 
         kb_id, job = await _check_target(job_id)
-        report = await asyncio.to_thread(deep_check, Path(rag.working_dir), kb_id, input_dir)
+        report = await asyncio.to_thread(
+            deep_check, Path(rag.working_dir), kb_id, input_dir
+        )
         report["job"] = public_job(job)
         return report
 
@@ -1297,7 +1470,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         return {
             "status": "index_rebuild_required" if blocked else "ready",
             "reason": (blocked or {}).get("reason") or "",
-            "embedding_model": manifest.get("embedding_model") or os.getenv("EMBEDDING_MODEL") or "",
+            "embedding_model": manifest.get("embedding_model")
+            or os.getenv("EMBEDDING_MODEL")
+            or "",
             "embedding_dimension": manifest.get("embedding_dimension"),
             "chunking_version": manifest.get("chunking_version") or "",
             "parent_chunk_version": manifest.get("parent_chunk_version") or "",
@@ -1312,15 +1487,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         _find_kb(data, kb_id)
         from lightrag.product_db import public_job
 
-        job = _task_store().create_job({
-            "job_type": "index_rebuild",
-            "user_id": actor_id(),
-            "kb_id": kb_id,
-            "doc_id": f"index-{kb_id}",
-            "file_name": "索引重建",
-            "idempotency_key": f"index-rebuild:{kb_id}:{uuid4().hex}",
-            "max_attempts": 3,
-        })
+        job = _task_store().create_job(
+            {
+                "job_type": "index_rebuild",
+                "user_id": actor_id(),
+                "kb_id": kb_id,
+                "doc_id": f"index-{kb_id}",
+                "file_name": "索引重建",
+                "idempotency_key": f"index-rebuild:{kb_id}:{uuid4().hex}",
+                "max_attempts": 3,
+            }
+        )
         return public_job(job)
 
     @router.get("/kb/{kb_id}/settings")
@@ -1361,7 +1538,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         store = _task_store()
         known_ids = {item["id"] for item in items}
         for doc_id, row in (data.get("doc_index") or {}).items():
-            if not isinstance(row, dict) or row.get("kb_id") != kb_id or row.get("deleted_at"):
+            if (
+                not isinstance(row, dict)
+                or row.get("kb_id") != kb_id
+                or row.get("deleted_at")
+            ):
                 continue
             task = store.latest_for_doc(actor_id(), str(doc_id))
             view = public_job(task) if task else None
@@ -1379,7 +1560,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             payload = {
                 "job_id": (view or {}).get("job_id") or "",
                 "status": status if status != "checked" else "ready",
-                "progress": 100 if status in {"ready", "checked"} else int((view or {}).get("progress") or 0),
+                "progress": 100
+                if status in {"ready", "checked"}
+                else int((view or {}).get("progress") or 0),
                 "error_msg": (view or {}).get("error_message") or "",
             }
             if matched:
@@ -1387,17 +1570,21 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 if row.get("display_name"):
                     matched["name"] = row["display_name"]
             elif doc_id not in known_ids and status != "cancelled":
-                items.append({
-                    "id": doc_id,
-                    "name": row.get("display_name") or doc_id,
-                    "chunk_count": len(row.get("chunk_ids") or []),
-                    "char_count": 0,
-                    "file_size": _file_size("", row.get("display_name") or "", input_dir),
-                    "updated_at": (view or {}).get("created_at") or _now(),
-                    "created_at": (view or {}).get("created_at") or _now(),
-                    "file_path": row.get("storage_key") or "",
-                    **payload,
-                })
+                items.append(
+                    {
+                        "id": doc_id,
+                        "name": row.get("display_name") or doc_id,
+                        "chunk_count": len(row.get("chunk_ids") or []),
+                        "char_count": 0,
+                        "file_size": _file_size(
+                            "", row.get("display_name") or "", input_dir
+                        ),
+                        "updated_at": (view or {}).get("created_at") or _now(),
+                        "created_at": (view or {}).get("created_at") or _now(),
+                        "file_path": row.get("storage_key") or "",
+                        **payload,
+                    }
+                )
         items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
         from lightrag.index_manifest import compatibility_error
         from lightrag.product_parse import load_document
@@ -1409,7 +1596,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         for item in items:
             document = load_document(rag.working_dir, item["id"])
             view = {key: value for key, value in item.items() if key != "file_path"}
-            view["mime_type"] = mime_of(item.get("name") or "", document.source_type if document else "")
+            view["mime_type"] = mime_of(
+                item.get("name") or "", document.source_type if document else ""
+            )
             view["version_id"] = document.version_id if document else ""
             view["version"] = view["version_id"] or item.get("version") or ""
             view["unit_count"] = len(document.walk()) if document else 0
@@ -1419,13 +1608,19 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         start = max(page - 1, 0) * page_size
         return {"items": visible[start : start + page_size], "total": total}
 
-    def _owned_source(data: dict[str, Any], doc_id: str, kb_id: str, version_id: str = ""):
+    def _owned_source(
+        data: dict[str, Any], doc_id: str, kb_id: str, version_id: str = ""
+    ):
         from lightrag.product_parse import load_document
         from lightrag.product_source import resolve_owned_file, source_kind
 
         _find_kb(data, kb_id)
         row = (data.get("doc_index") or {}).get(doc_id)
-        if not isinstance(row, dict) or row.get("deleted_at") or row.get("kb_id") != kb_id:
+        if (
+            not isinstance(row, dict)
+            or row.get("deleted_at")
+            or row.get("kb_id") != kb_id
+        ):
             raise HTTPException(status_code=404, detail="来源不存在")
         owner = str(row.get("owner_id") or "")
         if owner and owner != actor_id():
@@ -1437,7 +1632,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         path = resolve_owned_file(input_dir, storage) if storage else None
         if storage and path is None:
             raise HTTPException(status_code=404, detail="来源不存在")
-        name = str(row.get("display_name") or (document.source_name if document else "") or doc_id)
+        name = str(
+            row.get("display_name")
+            or (document.source_name if document else "")
+            or doc_id
+        )
         kind = source_kind(name, document.source_type if document else "")
         return row, document, path, name, kind
 
@@ -1452,8 +1651,12 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         from lightrag.product_source import build_source_view
 
         data = await _read()
-        _row, document, _path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
-        payload = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
+        _row, document, _path, name, _kind = _owned_source(
+            data, doc_id, kb_id, version_id
+        )
+        payload = build_source_view(
+            document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id
+        )
         payload["document_id"] = doc_id
         if document:
             payload["version_id"] = document.version_id
@@ -1470,19 +1673,25 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         from lightrag.product_source import build_reading, build_source_view
 
         data = await _read()
-        _row, document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        _row, document, path, name, kind = _owned_source(
+            data, doc_id, kb_id, version_id
+        )
         file_text = ""
         if path is not None and kind in {"text", "markdown"}:
             file_text = path.read_text(encoding="utf-8", errors="replace")
         payload = build_reading(document, kind=kind, file_text=file_text)
-        located = build_source_view(document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id)
-        payload.update({
-            "document_id": doc_id,
-            "version_id": document.version_id if document else "",
-            "doc_name": name,
-            "unit": located["unit"],
-            "matched_chunk": located["matched_chunk"],
-        })
+        located = build_source_view(
+            document, doc_name=name, chunk_id=chunk_id, unit_id=unit_id
+        )
+        payload.update(
+            {
+                "document_id": doc_id,
+                "version_id": document.version_id if document else "",
+                "doc_name": name,
+                "unit": located["unit"],
+                "matched_chunk": located["matched_chunk"],
+            }
+        )
         return payload
 
     def _file_response(path: Path, name: str, inline: bool):
@@ -1498,7 +1707,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     @router.get("/documents/{doc_id}/download")
     async def document_download(doc_id: str, kb_id: str, version_id: str = ""):
         data = await _read()
-        _row, _document, path, name, _kind = _owned_source(data, doc_id, kb_id, version_id)
+        _row, _document, path, name, _kind = _owned_source(
+            data, doc_id, kb_id, version_id
+        )
         if path is None:
             raise HTTPException(status_code=404, detail="来源不存在")
         return _file_response(path, name, inline=False)
@@ -1506,7 +1717,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     @router.get("/documents/{doc_id}/preview")
     async def document_preview(doc_id: str, kb_id: str, version_id: str = ""):
         data = await _read()
-        _row, _document, path, name, kind = _owned_source(data, doc_id, kb_id, version_id)
+        _row, _document, path, name, kind = _owned_source(
+            data, doc_id, kb_id, version_id
+        )
         if path is None:
             raise HTTPException(status_code=404, detail="来源不存在")
         if kind not in {"pdf", "text", "markdown"}:
@@ -1527,15 +1740,34 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         _find_kb(data, kb_id)
         safe_name = sanitize_filename(file.filename or "upload.bin", input_dir)
         if not doc_manager.is_supported_file(safe_name):
-            raise HTTPException(status_code=400, detail=f"不支持的文件类型：{safe_name}")
+            raise HTTPException(
+                status_code=400, detail=f"不支持的文件类型：{safe_name}"
+            )
         lock = _UPLOAD_LOCKS.setdefault(f"{kb_id}:{safe_name}", asyncio.Lock())
         async with lock:
             return await _store_upload(
-                background_tasks, file, kb_id, safe_name, data,
-                chunk_strategy, chunk_size, chunk_overlap, chunk_delimiter,
+                background_tasks,
+                file,
+                kb_id,
+                safe_name,
+                data,
+                chunk_strategy,
+                chunk_size,
+                chunk_overlap,
+                chunk_delimiter,
             )
 
-    async def _store_upload(background_tasks, file, kb_id, safe_name, data, chunk_strategy, chunk_size, chunk_overlap, chunk_delimiter):
+    async def _store_upload(
+        background_tasks,
+        file,
+        kb_id,
+        safe_name,
+        data,
+        chunk_strategy,
+        chunk_size,
+        chunk_overlap,
+        chunk_delimiter,
+    ):
         from lightrag.product_db import public_job
         from lightrag.product_ingest import content_key
         from lightrag.product_uploads import allocate_upload
@@ -1547,9 +1779,13 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         owned_files = sum(
             1
             for item in (data.get("doc_index") or {}).values()
-            if isinstance(item, dict) and item.get("kb_id") == kb_id and not item.get("deleted_at")
+            if isinstance(item, dict)
+            and item.get("kb_id") == kb_id
+            and not item.get("deleted_at")
         )
-        owned_files += sum(1 for bound in data["file_bindings"].values() if bound == kb_id)
+        owned_files += sum(
+            1 for bound in data["file_bindings"].values() if bound == kb_id
+        )
         if owned_files >= max_files:
             raise HTTPException(status_code=400, detail="该知识库文件数量已达上限")
         payload = await file.read()
@@ -1574,26 +1810,37 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(payload)
         await _write(data)
-        allowed = {"smart", "delimiter", "fixed", "recursive", "ledger", "qa", "clause", "one"}
+        allowed = {
+            "smart",
+            "delimiter",
+            "fixed",
+            "recursive",
+            "ledger",
+            "qa",
+            "clause",
+            "one",
+        }
         strategy = chunk_strategy if chunk_strategy in allowed else "smart"
-        job = store.create_job({
-            "job_type": "ingestion",
-            "user_id": actor_id(),
-            "kb_id": kb_id,
-            "doc_id": allocated["doc_id"],
-            "file_name": safe_name,
-            "file_path": allocated["storage_key"],
-            "idempotency_key": idempotency,
-            "input_snapshot": {
-                "owner_id": allocated["owner_id"],
-                "storage_key": allocated["storage_key"],
-                "content_hash": idempotency.rsplit(":", 1)[-1],
-                "strategy": strategy,
-                "chunk_size": max(1, int(chunk_size or 512)),
-                "chunk_overlap": max(0, int(chunk_overlap or 0)),
-                "version": allocated["version"],
-            },
-        })
+        job = store.create_job(
+            {
+                "job_type": "ingestion",
+                "user_id": actor_id(),
+                "kb_id": kb_id,
+                "doc_id": allocated["doc_id"],
+                "file_name": safe_name,
+                "file_path": allocated["storage_key"],
+                "idempotency_key": idempotency,
+                "input_snapshot": {
+                    "owner_id": allocated["owner_id"],
+                    "storage_key": allocated["storage_key"],
+                    "content_hash": idempotency.rsplit(":", 1)[-1],
+                    "strategy": strategy,
+                    "chunk_size": max(1, int(chunk_size or 512)),
+                    "chunk_overlap": max(0, int(chunk_overlap or 0)),
+                    "version": allocated["version"],
+                },
+            }
+        )
         if job.get("doc_id") != allocated["doc_id"]:
             fresh = await _read()
             fresh.get("doc_index", {}).pop(allocated["doc_id"], None)
@@ -1602,7 +1849,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 dest.unlink()
         view = public_job(job)
         view["message"] = "文档已提交，正在排队处理"
-        logger.info("产品壳上传 %s -> kb=%s job=%s", safe_name, kb_id, view.get("job_id"))
+        logger.info(
+            "产品壳上传 %s -> kb=%s job=%s", safe_name, kb_id, view.get("job_id")
+        )
         return view
 
     @router.get("/documents/{doc_id}/status")
@@ -1625,7 +1874,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         _find_kb(data, kb_id)
         target = None
         for item in (data.get("doc_index") or {}).values():
-            if not isinstance(item, dict) or item.get("kb_id") != kb_id or item.get("deleted_at"):
+            if (
+                not isinstance(item, dict)
+                or item.get("kb_id") != kb_id
+                or item.get("deleted_at")
+            ):
                 continue
             if doc_id and item.get("doc_id") == doc_id:
                 target = item
@@ -1638,15 +1891,26 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             _task_store().request_cancel(task["job_id"], actor_id())
         cancel(str(target.get("doc_id") or ""))
         abort_upload(
-            data, Path(rag.working_dir), input_dir, str(target["doc_id"]), "cancel", cancelled=True
+            data,
+            Path(rag.working_dir),
+            input_dir,
+            str(target["doc_id"]),
+            "cancel",
+            cancelled=True,
         )
         await _write(data)
-        view = _public_task(task["job_id"]) if task else {"status": "cancelled", "doc_id": target["doc_id"]}
+        view = (
+            _public_task(task["job_id"])
+            if task
+            else {"status": "cancelled", "doc_id": target["doc_id"]}
+        )
         view["name"] = target.get("display_name") or name
         return view
 
     @router.delete("/documents/{doc_id}")
-    async def delete_document(doc_id: str, kb_id: str, background_tasks: BackgroundTasks):
+    async def delete_document(
+        doc_id: str, kb_id: str, background_tasks: BackgroundTasks
+    ):
         data = await _read()
         _find_kb(data, kb_id)
         index = data.setdefault("doc_index", {})
@@ -1656,7 +1920,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         display_name = ""
         if target is not None:
             public = _public_doc(target, input_dir)
-            if not _doc_in_kb(public, kb_id, data) and not (isinstance(row, dict) and row.get("kb_id") == kb_id):
+            if not _doc_in_kb(public, kb_id, data) and not (
+                isinstance(row, dict) and row.get("kb_id") == kb_id
+            ):
                 raise HTTPException(status_code=404, detail="文档不存在")
             display_name = public["name"]
             data["file_bindings"].pop(public["name"], None)
@@ -1665,38 +1931,49 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         else:
             display_name = str(row.get("display_name") or doc_id)
         if not isinstance(row, dict):
-            row = {"doc_id": doc_id, "kb_id": kb_id, "owner_id": actor_id(), "display_name": display_name}
+            row = {
+                "doc_id": doc_id,
+                "kb_id": kb_id,
+                "owner_id": actor_id(),
+                "display_name": display_name,
+            }
             index[doc_id] = row
         row["status"] = "deleting"
         await _write(data)
-        created = _task_store().create_job({
-            "job_type": "delete_document",
-            "user_id": actor_id(),
-            "kb_id": kb_id,
-            "doc_id": doc_id,
-            "file_name": display_name,
-            "file_path": str(row.get("storage_key") or ""),
-            "idempotency_key": f"delete-document:{kb_id}:{doc_id}",
-        })
+        created = _task_store().create_job(
+            {
+                "job_type": "delete_document",
+                "user_id": actor_id(),
+                "kb_id": kb_id,
+                "doc_id": doc_id,
+                "file_name": display_name,
+                "file_path": str(row.get("storage_key") or ""),
+                "idempotency_key": f"delete-document:{kb_id}:{doc_id}",
+            }
+        )
         from lightrag.product_db import public_job
 
         return public_job(created)
 
     @router.get("/chunks")
-    async def list_chunks(kb_id: str, page: int = 1, page_size: int = 10, search: str = ""):
+    async def list_chunks(
+        kb_id: str, page: int = 1, page_size: int = 10, search: str = ""
+    ):
         data = await _read()
         _find_kb(data, kb_id)
         items = await _kb_chunks(kb_id, data)
         needle = search.strip().lower()
         if needle:
             items = [
-                item for item in items
-                if needle in item["doc_name"].lower() or needle in (item["content"] or "").lower()
+                item
+                for item in items
+                if needle in item["doc_name"].lower()
+                or needle in (item["content"] or "").lower()
             ]
         total = len(items)
         start = max(page - 1, 0) * page_size
         page_items = []
-        for item in items[start:start + page_size]:
+        for item in items[start : start + page_size]:
             page_items.append({**item, "content": _clean_text(item["content"], 280)})
         return {"items": page_items, "total": total}
 
@@ -1704,16 +1981,20 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def list_qa(kb_id: str, page: int = 1, page_size: int = 10, search: str = ""):
         data = await _read()
         _find_kb(data, kb_id)
-        items = [item for item in data.get("qa_pairs") or [] if item.get("kb_id") == kb_id]
+        items = [
+            item for item in data.get("qa_pairs") or [] if item.get("kb_id") == kb_id
+        ]
         needle = search.strip().lower()
         if needle:
             items = [
-                item for item in items
-                if needle in (item.get("question") or "").lower() or needle in (item.get("answer") or "").lower()
+                item
+                for item in items
+                if needle in (item.get("question") or "").lower()
+                or needle in (item.get("answer") or "").lower()
             ]
         total = len(items)
         start = max(page - 1, 0) * page_size
-        return {"items": items[start:start + page_size], "total": total}
+        return {"items": items[start : start + page_size], "total": total}
 
     @router.post("/qa")
     async def create_qa(body: QABody):
@@ -1742,7 +2023,8 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         data = await _read()
         before = len(data.get("qa_pairs") or [])
         data["qa_pairs"] = [
-            item for item in data.get("qa_pairs") or []
+            item
+            for item in data.get("qa_pairs") or []
             if not (item.get("id") == qa_id and item.get("kb_id") == kb_id)
         ]
         if len(data["qa_pairs"]) == before:
@@ -1750,7 +2032,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         await _write(data)
         return {"message": "已删除"}
 
-    async def _retrieve(body_query: str, kb: dict[str, Any], mode_name: str, top_k: int, rerank: bool, history: list | None):
+    async def _retrieve(
+        body_query: str,
+        kb: dict[str, Any],
+        mode_name: str,
+        top_k: int,
+        rerank: bool,
+        history: list | None,
+    ):
         mode = _map_mode(mode_name, bool(kb["settings"].get("graph_enabled", True)))
         history_msgs = [
             {"role": item.get("role"), "content": item.get("content", "")}
@@ -1776,9 +2065,16 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         ratio = body.similarity_ratio
         if ratio is None:
             ratio = settings.get("similarity_ratio", 0.5)
-        rerank = body.enable_rerank if body.enable_rerank is not None else bool(settings.get("rerank_enabled"))
+        rerank = (
+            body.enable_rerank
+            if body.enable_rerank is not None
+            else bool(settings.get("rerank_enabled"))
+        )
         mode_name = body.retrieval_mode or settings.get("retrieval_mode") or "mix"
-        if not bool(settings.get("graph_enabled", True)) and mode_name in {"mix", "graph"}:
+        if not bool(settings.get("graph_enabled", True)) and mode_name in {
+            "mix",
+            "graph",
+        }:
             mode_name = "vector"
         threshold = body.similarity_threshold
         if threshold is None:
@@ -1789,7 +2085,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             payload = dict(record or {})
             if file_path and not payload.get("file_path"):
                 payload["file_path"] = file_path
-            return scope_visible(payload, body.kb_id, bindings, data.get("doc_index") or {})
+            return scope_visible(
+                payload, body.kb_id, bindings, data.get("doc_index") or {}
+            )
 
         try:
             kb_chunks = await _kb_chunks(body.kb_id, data)
@@ -1837,7 +2135,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         for row in records:
             public = _public_doc(row, input_dir)
             if _doc_in_kb(public, kb_id, data):
-                parts.append(f"{public['id']}:{public.get('updated_at')}:{public.get('chunk_count')}")
+                parts.append(
+                    f"{public['id']}:{public.get('updated_at')}:{public.get('chunk_count')}"
+                )
         return "|".join(sorted(parts))
 
     @router.get("/conversations")
@@ -1851,7 +2151,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def create_conversation(body: ConversationCreate):
         data = await _read()
         _find_kb(data, body.kb_id)
-        return _app().create_conversation(actor_id(), body.kb_id, body.title or "新会话")
+        return _app().create_conversation(
+            actor_id(), body.kb_id, body.title or "新会话"
+        )
 
     @router.get("/conversations/{conversation_id}")
     async def get_conversation(conversation_id: str, kb_id: str):
@@ -1927,7 +2229,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         if rating not in {"positive", "negative"}:
             raise HTTPException(status_code=400, detail="反馈类型无效")
         reason = (body.reason or "").strip()
-        allowed = {"answer_wrong", "citation_wrong", "not_found", "outdated", "unclear", "other"}
+        allowed = {
+            "answer_wrong",
+            "citation_wrong",
+            "not_found",
+            "outdated",
+            "unclear",
+            "other",
+        }
         if rating == "negative" and reason not in allowed:
             raise HTTPException(status_code=400, detail="请选择反馈原因")
         store = _app()
@@ -1935,7 +2244,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         if message_row is None or message_row["role"] != "assistant":
             raise HTTPException(status_code=404, detail="消息不存在")
         question = ""
-        for item in store.list_messages(message_row["conversation_id"], actor_id(), body.kb_id):
+        for item in store.list_messages(
+            message_row["conversation_id"], actor_id(), body.kb_id
+        ):
             if item["id"] == message_id:
                 break
             if item["role"] == "user":
@@ -1960,7 +2271,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def list_memory_candidates(kb_id: str, status: str = "pending"):
         data = await _read()
         _find_kb(data, kb_id)
-        items = _app().list_memory_candidates(actor_id(), kb_id, status=status or "pending")
+        items = _app().list_memory_candidates(
+            actor_id(), kb_id, status=status or "pending"
+        )
         return {"items": items}
 
     @router.post("/memory-candidates")
@@ -1985,7 +2298,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         data = await _read()
         _find_kb(data, kb_id)
         candidate = _app().get_memory_candidate(candidate_id, actor_id(), kb_id)
-        embedding = await _embedding_for(rag, str((candidate or {}).get("content") or "")) if candidate else []
+        embedding = (
+            await _embedding_for(rag, str((candidate or {}).get("content") or ""))
+            if candidate
+            else []
+        )
         item = _app().accept_memory_candidate(
             candidate_id,
             actor_id(),
@@ -2067,7 +2384,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     async def list_voice_practice_sessions(kb_id: str, limit: int = 30):
         data = await _read()
         _find_kb(data, kb_id)
-        return {"items": _app().list_voice_practice_sessions(actor_id(), kb_id, limit=limit)}
+        return {
+            "items": _app().list_voice_practice_sessions(actor_id(), kb_id, limit=limit)
+        }
 
     @router.get("/voice/practice/sessions/{session_id}")
     async def get_voice_practice_session(session_id: str, kb_id: str):
@@ -2086,7 +2405,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
 
         try:
             audio = await file.read()
-            text = await transcribe_audio(audio, file.filename or "recording.webm", file.content_type or "")
+            text = await transcribe_audio(
+                audio, file.filename or "recording.webm", file.content_type or ""
+            )
             return {"text": text}
         except Exception as exc:
             raise _voice_http_error(exc) from exc
@@ -2123,7 +2444,10 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     citations = list(event.get("citations") or citations)
                     memories = list(event.get("memories") or [])
                 elif event.get("type") == "error":
-                    raise HTTPException(status_code=503, detail=str(event.get("message") or "问答服务暂时不可用"))
+                    raise HTTPException(
+                        status_code=503,
+                        detail=str(event.get("message") or "问答服务暂时不可用"),
+                    )
         except HTTPException:
             raise
         except Exception as exc:
@@ -2164,16 +2488,24 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
 
         app = _app()
         found = app.get_voice_practice_turn(body.turn_id, actor_id())
-        if found is None or found.get("status") != "completed" or (body.kb_id and found.get("kb_id") != body.kb_id):
+        if (
+            found is None
+            or found.get("status") != "completed"
+            or (body.kb_id and found.get("kb_id") != body.kb_id)
+        ):
             raise HTTPException(status_code=404, detail="练习回答不存在")
         app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "generating")
         try:
-            audio, media_type = await synthesize_speech(found.get("answer") or "", body.voice)
+            audio, media_type = await synthesize_speech(
+                found.get("answer") or "", body.voice
+            )
         except Exception as exc:
             app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "failed")
             raise _voice_http_error(exc) from exc
         app.update_voice_practice_turn_audio(body.turn_id, actor_id(), "ready")
-        return Response(content=audio, media_type=media_type, headers={"Cache-Control": "no-store"})
+        return Response(
+            content=audio, media_type=media_type, headers={"Cache-Control": "no-store"}
+        )
 
     @router.websocket("/voice/realtime")
     async def realtime_voice(websocket: WebSocket):
@@ -2211,7 +2543,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             if not raw:
                 for protocol in websocket.scope.get("subprotocols") or []:
                     if protocol.startswith("kb-access."):
-                        raw = protocol[len("kb-access."):]
+                        raw = protocol[len("kb-access.") :]
                         break
             if not raw:
                 raise HTTPException(status_code=401, detail="未登录")
@@ -2269,12 +2601,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     elif event.get("type") == "provider_error":
                         state["error"] = event.get("message") or "阿里云实时识别失败"
                         state["provider_code"] = event.get("provider_code") or ""
-                        await send({
-                            "type": "error",
-                            "stage": "asr",
-                            "message": state["error"],
-                            "provider_code": state["provider_code"],
-                        })
+                        await send(
+                            {
+                                "type": "error",
+                                "stage": "asr",
+                                "message": state["error"],
+                                "provider_code": state["provider_code"],
+                            }
+                        )
                         break
                     elif event.get("type") == "provider_done":
                         state["completed"] = True
@@ -2285,14 +2619,18 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 state["error"] = "阿里云实时识别连接已断开"
                 logger.warning("实时 ASR 连接断开: %s", exc)
                 with contextlib.suppress(Exception):
-                    await send({"type": "error", "stage": "asr", "message": state["error"]})
+                    await send(
+                        {"type": "error", "stage": "asr", "message": state["error"]}
+                    )
 
         async def start_provider() -> None:
             nonlocal provider, provider_task, provider_state
             config = AliyunNlsConfig.from_env()
             provider = await open_aliyun_transcriber(config)
             provider_state = {"text": "", "final": "", "ready": True}
-            provider_task = asyncio.create_task(provider_reader(provider[0], provider_state))
+            provider_task = asyncio.create_task(
+                provider_reader(provider[0], provider_state)
+            )
             await send({"type": "asr_ready"})
 
         async def cancel_answer(reason: str = "cancelled") -> None:
@@ -2310,7 +2648,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 await send({"type": "answer_cancelled", "reason": reason})
 
         async def speak_local_reply(text: str) -> None:
-            await send({"type": "answer_done", "answer": text, "citations": [], "memories": [], "answerable": True})
+            await send(
+                {
+                    "type": "answer_done",
+                    "answer": text,
+                    "citations": [],
+                    "memories": [],
+                    "answerable": True,
+                }
+            )
             try:
                 await send({"type": "tts_start", "purpose": "local_reply"})
                 async for chunk in stream_speech(text):
@@ -2354,12 +2700,24 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     except Exception as exc:
                         if not tts_error_sent:
                             tts_error_sent = True
-                            await send({"type": "error", "stage": "tts", "message": str(exc)[:240]})
+                            await send(
+                                {
+                                    "type": "error",
+                                    "stage": "tts",
+                                    "message": str(exc)[:240],
+                                }
+                            )
                     finally:
                         tts_queue.task_done()
 
             tts_task = asyncio.create_task(tts_worker())
-            await send({"type": "answer_status", "phase": "retrieving", "message": "正在查找相关资料"})
+            await send(
+                {
+                    "type": "answer_status",
+                    "phase": "retrieving",
+                    "message": "正在查找相关资料",
+                }
+            )
             await tts_queue.put(_voice_thinking_ack(transcript))
             sentence_buffer = ""
             answer_text = ""
@@ -2370,18 +2728,30 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     event_type = event.get("type")
                     if event_type == "meta":
                         citations = list(event.get("citations") or [])
-                        await send({"type": "answer_status", "phase": "composing", "message": "已找到相关资料，正在组织回答"})
+                        await send(
+                            {
+                                "type": "answer_status",
+                                "phase": "composing",
+                                "message": "已找到相关资料，正在组织回答",
+                            }
+                        )
                     elif event_type == "token":
                         text = str(event.get("text") or "")
                         answer_text += text
-                        await send({"type": "answer_token", "text": text, "draft": bool(event.get("draft"))})
+                        await send(
+                            {
+                                "type": "answer_token",
+                                "text": text,
+                                "draft": bool(event.get("draft")),
+                            }
+                        )
                         sentence_buffer += text
                         while True:
                             match = re.search(r"[。！？!?；;]\s*", sentence_buffer)
                             if not match:
                                 break
-                            segment = sentence_buffer[:match.end()].strip()
-                            sentence_buffer = sentence_buffer[match.end():]
+                            segment = sentence_buffer[: match.end()].strip()
+                            sentence_buffer = sentence_buffer[match.end() :]
                             if segment:
                                 await tts_queue.put(segment)
                     elif event_type == "done":
@@ -2391,16 +2761,26 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         if sentence_buffer.strip():
                             await tts_queue.put(sentence_buffer.strip())
                             sentence_buffer = ""
-                        await send({
-                            "type": "answer_done",
-                            "answer": answer_text,
-                            "citations": citations,
-                            "memories": memories,
-                            "answerable": event.get("answerable"),
-                        })
+                        await send(
+                            {
+                                "type": "answer_done",
+                                "answer": answer_text,
+                                "citations": citations,
+                                "memories": memories,
+                                "answerable": event.get("answerable"),
+                            }
+                        )
                         break
                     elif event_type == "error":
-                        await send({"type": "error", "stage": "answer", "message": str(event.get("message") or "问答服务暂时不可用")})
+                        await send(
+                            {
+                                "type": "error",
+                                "stage": "answer",
+                                "message": str(
+                                    event.get("message") or "问答服务暂时不可用"
+                                ),
+                            }
+                        )
                         break
                 await tts_queue.join()
                 await tts_queue.put(None)
@@ -2416,12 +2796,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     memory_refs=memories,
                     status="completed" if answer_text else "failed",
                 )
-                await send({
-                    "type": "turn_done",
-                    "transcript": transcript,
-                    "turn": turn,
-                    "conversation_id": session.get("conversation_id") or "",
-                })
+                await send(
+                    {
+                        "type": "turn_done",
+                        "transcript": transcript,
+                        "turn": turn,
+                        "conversation_id": session.get("conversation_id") or "",
+                    }
+                )
             except asyncio.CancelledError:
                 with contextlib.suppress(Exception):
                     _app().add_voice_practice_turn(
@@ -2441,7 +2823,10 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             user = websocket_user(data)
             user_token = CURRENT_USER.set(user)
             first = await websocket.receive_json()
-            if first.get("type") != "start" or not str(first.get("kb_id") or "").strip():
+            if (
+                first.get("type") != "start"
+                or not str(first.get("kb_id") or "").strip()
+            ):
                 await send({"type": "error", "message": "实时会话缺少知识库"})
                 return
             kb_id = str(first["kb_id"])
@@ -2449,10 +2834,19 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             session_id = str(first.get("session_id") or "")
             app = _app()
             if session_id:
-                session = app.get_voice_practice_session(session_id, actor_id(), kb_id) or {}
+                session = (
+                    app.get_voice_practice_session(session_id, actor_id(), kb_id) or {}
+                )
             if not session:
-                conversation = app.create_conversation(actor_id(), kb_id, "实时语音练习")
-                session = app.create_voice_practice_session(actor_id(), kb_id, goal=str(first.get("goal") or "free"), conversation_id=conversation["id"])
+                conversation = app.create_conversation(
+                    actor_id(), kb_id, "实时语音练习"
+                )
+                session = app.create_voice_practice_session(
+                    actor_id(),
+                    kb_id,
+                    goal=str(first.get("goal") or "free"),
+                    conversation_id=conversation["id"],
+                )
                 session_id = str(session.get("id") or "")
             if session.get("status") != "active":
                 await send({"type": "error", "message": "练习会话已经结束"})
@@ -2460,27 +2854,32 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             try:
                 await start_provider()
             except RealtimeVoiceError as exc:
-                await send({
-                    "type": "error",
-                    "stage": "asr",
-                    "code": exc.code,
-                    "message": str(exc),
-                    "retryable": exc.code not in {
-                        "aliyun_not_configured",
-                        "aliyun_permission_denied",
-                        "aliyun_access_key_invalid",
-                        "realtime_dependency_missing",
-                    },
-                })
+                await send(
+                    {
+                        "type": "error",
+                        "stage": "asr",
+                        "code": exc.code,
+                        "message": str(exc),
+                        "retryable": exc.code
+                        not in {
+                            "aliyun_not_configured",
+                            "aliyun_permission_denied",
+                            "aliyun_access_key_invalid",
+                            "realtime_dependency_missing",
+                        },
+                    }
+                )
                 return
-            await send({
-                "type": "ready",
-                "session_id": session_id,
-                "kb_id": kb_id,
-                "conversation_id": session.get("conversation_id") or "",
-                "transport": "websocket",
-                "continuous": True,
-            })
+            await send(
+                {
+                    "type": "ready",
+                    "session_id": session_id,
+                    "kb_id": kb_id,
+                    "conversation_id": session.get("conversation_id") or "",
+                    "transport": "websocket",
+                    "continuous": True,
+                }
+            )
 
             while True:
                 message = await websocket.receive()
@@ -2492,7 +2891,13 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     try:
                         await provider[0].send(message["bytes"])
                     except Exception:
-                        await send({"type": "error", "stage": "asr", "message": "实时识别连接已断开，请重新连接"})
+                        await send(
+                            {
+                                "type": "error",
+                                "stage": "asr",
+                                "message": "实时识别连接已断开，请重新连接",
+                            }
+                        )
                     continue
                 raw_text = message.get("text") or ""
                 try:
@@ -2513,9 +2918,20 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     continue
                 if command_type == "end_turn":
                     state = await stop_provider()
-                    transcript = str(state.get("final") or state.get("text") or command.get("text") or "").strip()
+                    transcript = str(
+                        state.get("final")
+                        or state.get("text")
+                        or command.get("text")
+                        or ""
+                    ).strip()
                     if not transcript:
-                        await send({"type": "error", "stage": "asr", "message": "没有识别到可用语音内容"})
+                        await send(
+                            {
+                                "type": "error",
+                                "stage": "asr",
+                                "message": "没有识别到可用语音内容",
+                            }
+                        )
                         await start_provider()
                         continue
                     await send({"type": "transcript_final", "text": transcript})
@@ -2524,11 +2940,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         intent, reply = local_intent
                         if answer_task and not answer_task.done():
                             await cancel_answer("voice_command")
-                        await send({
-                            "type": "answer_status",
-                            "phase": "ending" if intent == "finish" else "responding",
-                            "message": "正在结束本次对话" if intent == "finish" else "正在回应",
-                        })
+                        await send(
+                            {
+                                "type": "answer_status",
+                                "phase": "ending"
+                                if intent == "finish"
+                                else "responding",
+                                "message": "正在结束本次对话"
+                                if intent == "finish"
+                                else "正在回应",
+                            }
+                        )
                         await speak_local_reply(reply)
                         turn = _app().add_voice_practice_turn(
                             session_id=session_id,
@@ -2540,12 +2962,14 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                             memory_refs=[],
                             status="completed",
                         )
-                        await send({
-                            "type": "turn_done",
-                            "transcript": transcript,
-                            "turn": turn,
-                            "conversation_id": session.get("conversation_id") or "",
-                        })
+                        await send(
+                            {
+                                "type": "turn_done",
+                                "transcript": transcript,
+                                "turn": turn,
+                                "conversation_id": session.get("conversation_id") or "",
+                            }
+                        )
                         if intent == "finish":
                             updated = _app().update_voice_practice_session(
                                 session_id,
@@ -2554,11 +2978,23 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                                 status="completed",
                                 summary="用户通过语音结束了实时对话",
                             )
-                            await send({"type": "finished", "session": updated or session, "reason": "voice_command"})
+                            await send(
+                                {
+                                    "type": "finished",
+                                    "session": updated or session,
+                                    "reason": "voice_command",
+                                }
+                            )
                             break
                         await start_provider()
                         continue
-                    await send({"type": "answer_status", "phase": "understanding", "message": "正在理解你的问题"})
+                    await send(
+                        {
+                            "type": "answer_status",
+                            "phase": "understanding",
+                            "message": "正在理解你的问题",
+                        }
+                    )
                     if answer_task and not answer_task.done():
                         await cancel_answer("new_turn")
                     answer_task = asyncio.create_task(answer_turn(transcript))
@@ -2567,15 +3003,28 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 if command_type == "finish":
                     await cancel_answer("finish")
                     await stop_provider()
-                    updated = _app().update_voice_practice_session(session_id, actor_id(), kb_id, status="completed", summary="实时语音练习已结束")
+                    updated = _app().update_voice_practice_session(
+                        session_id,
+                        actor_id(),
+                        kb_id,
+                        status="completed",
+                        summary="实时语音练习已结束",
+                    )
                     await send({"type": "finished", "session": updated or session})
                     break
         except WebSocketDisconnect:
             return
         except HTTPException as exc:
             with contextlib.suppress(Exception):
-                await send({"type": "error", "code": "auth", "message": str(exc.detail), "retryable": False})
-        except Exception as exc:
+                await send(
+                    {
+                        "type": "error",
+                        "code": "auth",
+                        "message": str(exc.detail),
+                        "retryable": False,
+                    }
+                )
+        except Exception:
             logger.exception("实时语音会话失败")
             with contextlib.suppress(Exception):
                 await send({"type": "error", "message": "实时语音会话暂时不可用"})
@@ -2594,7 +3043,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         if body.kb_id and body.kb_id != session["kb_id"]:
             raise HTTPException(status_code=404, detail="练习不存在")
         _find_kb(data, session["kb_id"])
-        turns = _app().list_voice_practice_turns(session_id, actor_id(), session["kb_id"])
+        turns = _app().list_voice_practice_turns(
+            session_id, actor_id(), session["kb_id"]
+        )
         summary = (body.summary or "").strip()
         if not summary:
             summary = f"本次练习完成 {len([item for item in turns if item.get('status') == 'completed'])} 轮。"
@@ -2607,7 +3058,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         )
         return updated or session
 
-    async def _remember_summary(session_id: str, kb_id: str, history: list[dict[str, Any]]) -> None:
+    async def _remember_summary(
+        session_id: str, kb_id: str, history: list[dict[str, Any]]
+    ) -> None:
         _recent, older = window_and_older(history)
         data = await _read()
         sessions = data.setdefault("sessions", {})
@@ -2665,7 +3118,11 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             else bool(settings.get("rerank_enabled"))
         )
         if body.similarity_threshold is None:
-            score_threshold = float(settings.get("similarity_threshold") if settings.get("similarity_threshold") is not None else 0.2)
+            score_threshold = float(
+                settings.get("similarity_threshold")
+                if settings.get("similarity_threshold") is not None
+                else 0.2
+            )
         else:
             score_threshold = float(body.similarity_threshold)
         expand_context = (
@@ -2686,11 +3143,15 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         app = _app()
         conversation = None
         if body.conversation_id:
-            conversation = app.get_conversation(body.conversation_id, user_id, body.kb_id)
+            conversation = app.get_conversation(
+                body.conversation_id, user_id, body.kb_id
+            )
             if conversation is None:
                 raise HTTPException(status_code=404, detail="会话不存在")
         else:
-            conversation = app.create_conversation(user_id, body.kb_id, _conversation_title(body.query))
+            conversation = app.create_conversation(
+                user_id, body.kb_id, _conversation_title(body.query)
+            )
         app.add_message(
             conversation_id=conversation["id"],
             owner_id=user_id,
@@ -2700,19 +3161,32 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             status="completed",
         )
         history = app.history_for_answer(conversation["id"], user_id, body.kb_id)
-        if history and history[-1]["role"] == "user" and history[-1]["content"] == body.query.strip():
+        if (
+            history
+            and history[-1]["role"] == "user"
+            and history[-1]["content"] == body.query.strip()
+        ):
             history = history[:-1]
-        summary = {"text": conversation.get("summary") or ""} if conversation.get("summary") else None
+        summary = (
+            {"text": conversation.get("summary") or ""}
+            if conversation.get("summary")
+            else None
+        )
 
         def file_in_kb(file_path: str, record: dict | None = None) -> bool:
             payload = dict(record or {})
             if file_path and not payload.get("file_path"):
                 payload["file_path"] = file_path
-            return scope_visible(payload, body.kb_id, bindings, data.get("doc_index") or {})
+            return scope_visible(
+                payload, body.kb_id, bindings, data.get("doc_index") or {}
+            )
 
         kb_chunks = await _kb_chunks(body.kb_id, data)
         version = await _kb_version(body.kb_id, data)
-        doc_ids = {str(item.get("document_id") or item.get("doc_id") or "") for item in kb_chunks}
+        doc_ids = {
+            str(item.get("document_id") or item.get("doc_id") or "")
+            for item in kb_chunks
+        }
         doc_ids.update(str(key) for key in (data.get("doc_index") or {}))
         live_versions = {}
         for doc_id in doc_ids:
@@ -2730,7 +3204,12 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             "llm_model": os.getenv("LLM_MODEL") or "",
         }
 
-        def _save_assistant(status: str, content: str = "", citations: list | None = None, meta: dict | None = None):
+        def _save_assistant(
+            status: str,
+            content: str = "",
+            citations: list | None = None,
+            meta: dict | None = None,
+        ):
             nonlocal saved_assistant
             if saved_assistant:
                 return None
@@ -2823,28 +3302,32 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     )
                 if done.get("store_cache") and done.get("embedding"):
                     entries = _load_cache()
-                    entries.append({
-                        "query": done.get("rewritten") or body.query,
-                        "embedding": done.get("embedding"),
-                        "kb_id": body.kb_id,
-                        "user_id": user_id,
-                        "tenant": "default",
-                        "kb_version": version,
-                        "prompt_version": PROMPT_VERSION,
-                        "model": os.getenv("LLM_MODEL") or "",
-                        "mode": mode_name,
-                        "detail": detail,
-                        "index_version": index_version,
-                        "document_versions": {
-                            str(item.get("document_id") or ""): str(item.get("version_id") or "")
-                            for item in (done.get("citations") or [])
-                            if item.get("document_id") and item.get("version_id")
-                        },
-                        "chunk_ids": done.get("chunk_ids") or [],
-                        "citations": done.get("citations") or [],
-                        "answer": answer[:2000],
-                        "created_at": _now(),
-                    })
+                    entries.append(
+                        {
+                            "query": done.get("rewritten") or body.query,
+                            "embedding": done.get("embedding"),
+                            "kb_id": body.kb_id,
+                            "user_id": user_id,
+                            "tenant": "default",
+                            "kb_version": version,
+                            "prompt_version": PROMPT_VERSION,
+                            "model": os.getenv("LLM_MODEL") or "",
+                            "mode": mode_name,
+                            "detail": detail,
+                            "index_version": index_version,
+                            "document_versions": {
+                                str(item.get("document_id") or ""): str(
+                                    item.get("version_id") or ""
+                                )
+                                for item in (done.get("citations") or [])
+                                if item.get("document_id") and item.get("version_id")
+                            },
+                            "chunk_ids": done.get("chunk_ids") or [],
+                            "citations": done.get("citations") or [],
+                            "answer": answer[:2000],
+                            "created_at": _now(),
+                        }
+                    )
                     _save_cache(entries)
             elif not saved_assistant:
                 _save_assistant("failed", "")
@@ -2869,7 +3352,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     rewritten = event.get("rewritten") or rewritten
                 elif event.get("type") == "done":
                     answer = event.get("answer") or answer
-                    citations = event.get("citations") if "citations" in event else citations
+                    citations = (
+                        event.get("citations") if "citations" in event else citations
+                    )
             return {
                 "answer": answer,
                 "citations": citations,
@@ -2884,7 +3369,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         async def events():
             try:
                 async for event in _answer_events(body):
-                    payload = {key: value for key, value in event.items() if key != "embedding"}
+                    payload = {
+                        key: value for key, value in event.items() if key != "embedding"
+                    }
                     yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 message = getattr(exc, "detail", None) or str(exc)
@@ -2924,7 +3411,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             "chunk_count": chunk_count,
             "entity_type_distribution": [
                 {"type": name, "count": count}
-                for name, count in sorted(dist.items(), key=lambda item: item[1], reverse=True)
+                for name, count in sorted(
+                    dist.items(), key=lambda item: item[1], reverse=True
+                )
             ],
         }
 
@@ -2997,7 +3486,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             other_node = await graph.get_node(other) or {}
             if other_node and not _node_in_scope(other_node, kb_id, bindings):
                 continue
-            edge = await graph.get_edge(src, tgt) or await graph.get_edge(tgt, src) or {}
+            edge = (
+                await graph.get_edge(src, tgt) or await graph.get_edge(tgt, src) or {}
+            )
             neighbors.append(
                 {
                     "neighbor_id": other,
@@ -3007,7 +3498,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     "relation_type": _clean_text(edge.get("keywords") or "关联", 24),
                     "description": _clean_text(edge.get("description"), 160),
                     "weight": edge.get("weight") or 1,
-                    "documents": _graph_document_refs(other_node, data, kb_id, bindings),
+                    "documents": _graph_document_refs(
+                        other_node, data, kb_id, bindings
+                    ),
                 }
             )
         return {
@@ -3074,9 +3567,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         wanted = (rel_type or "").strip()
         items = []
         for row in scoped:
-            if needle and needle not in row["source"].lower() and needle not in row["target"].lower():
+            if (
+                needle
+                and needle not in row["source"].lower()
+                and needle not in row["target"].lower()
+            ):
                 continue
-            if wanted and wanted not in row["_labels"] and wanted not in row["keywords"]:
+            if (
+                wanted
+                and wanted not in row["_labels"]
+                and wanted not in row["keywords"]
+            ):
                 continue
             items.append({key: value for key, value in row.items() if key != "_labels"})
         items.sort(key=lambda row: row["weight"], reverse=True)
@@ -3123,17 +3624,21 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         center_id = requested_id if requested_id in node_map else ""
         if not center_id and requested_name:
             exact = [
-                node_id for node_id, props in node_map.items()
+                node_id
+                for node_id, props in node_map.items()
                 if _entity_display_name(node_id, props).casefold() == requested_name
             ]
             partial = [
-                node_id for node_id, props in node_map.items()
+                node_id
+                for node_id, props in node_map.items()
                 if requested_name in _entity_display_name(node_id, props).casefold()
                 or requested_name in str(props.get("description") or "").casefold()
             ]
             matches = exact or partial
             if matches:
-                center_id = max(matches, key=lambda item: len(adjacency.get(item, set())))
+                center_id = max(
+                    matches, key=lambda item: len(adjacency.get(item, set()))
+                )
 
         max_nodes = max(1, min(limit, 60))
         selected_ids: list[str] = []
@@ -3155,18 +3660,28 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     key=lambda item: len(adjacency.get(item, set())),
                     reverse=True,
                 )
-                queue.extend((neighbor, depth + 1) for neighbor in neighbors if neighbor not in visited)
+                queue.extend(
+                    (neighbor, depth + 1)
+                    for neighbor in neighbors
+                    if neighbor not in visited
+                )
             truncated = bool(queue)
         elif requested_id or requested_name:
             return {
-                "nodes": [], "edges": [], "mode": "focused", "center_id": None,
-                "is_truncated": False, "empty_reason": "没有找到匹配的实体",
+                "nodes": [],
+                "edges": [],
+                "mode": "focused",
+                "center_id": None,
+                "is_truncated": False,
+                "empty_reason": "没有找到匹配的实体",
             }
         else:
             # The overview is intentionally a compact set of connected, high-value
             # entities. Isolated extraction artifacts are not useful exploration
             # entry points and remain available from the entity management table.
-            connected = [node_id for node_id, neighbors in adjacency.items() if neighbors]
+            connected = [
+                node_id for node_id, neighbors in adjacency.items() if neighbors
+            ]
             ranked = sorted(
                 connected,
                 key=lambda item: (
@@ -3178,16 +3693,22 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             )
             candidates = set(ranked[:max_nodes])
             overview_edges = [
-                edge for edge in scoped_edges
+                edge
+                for edge in scoped_edges
                 if str(edge.get("source") or "") in candidates
                 and str(edge.get("target") or "") in candidates
             ]
             linked_ids = {
                 endpoint
                 for edge in overview_edges
-                for endpoint in (str(edge.get("source") or ""), str(edge.get("target") or ""))
+                for endpoint in (
+                    str(edge.get("source") or ""),
+                    str(edge.get("target") or ""),
+                )
             }
-            selected_ids = [node_id for node_id in ranked[:max_nodes] if node_id in linked_ids]
+            selected_ids = [
+                node_id for node_id in ranked[:max_nodes] if node_id in linked_ids
+            ]
             truncated = len(connected) > len(selected_ids)
 
         kept_ids = set(selected_ids)
@@ -3201,7 +3722,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             for node_id in selected_ids
         ]
         edges = [
-            _edge_view(str(edge.get("source") or ""), str(edge.get("target") or ""), edge)
+            _edge_view(
+                str(edge.get("source") or ""), str(edge.get("target") or ""), edge
+            )
             for edge in scoped_edges
             if str(edge.get("source") or "") in kept_ids
             and str(edge.get("target") or "") in kept_ids

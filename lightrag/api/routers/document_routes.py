@@ -833,17 +833,18 @@ def get_unique_filename_in_enqueued(target_dir: Path, original_name: str) -> str
     timestamp = int(time.time())
     return f"{base_name}_{timestamp}{extension}"
 
+
 async def process_with_ocr(file_path, file_size, track_id, rag, logger):
     """
     使用DotsOCR服务处理文档并提取内容
-    
+
     Args:
         file_path: 文件路径
         file_size: 文件大小
         track_id: 跟踪ID
         rag: RAG服务实例
         logger: 日志记录器
-    
+
     Returns:
         tuple: (success: bool, content: str, track_id: str)
     """
@@ -862,7 +863,7 @@ async def process_with_ocr(file_path, file_size, track_id, rag, logger):
             response = await client.post(
                 ocr_service_url, json={"file_path": str(file_path.resolve())}
             )
-        
+
         # 检查响应状态
         if response.status_code == 200:
             # 解析JSON响应
@@ -870,29 +871,28 @@ async def process_with_ocr(file_path, file_size, track_id, rag, logger):
             # 从响应中获取content字段
             if result.get("status") == "success":
                 content = result.get("content", "")
-                
+
                 # 将content内容输出到文档中
-                from pathlib import Path
-                import os
-                
                 # 创建输出目录
                 BASE_DIR = Path(__file__).parent
                 output_dir = BASE_DIR / "output"
                 output_dir.mkdir(exist_ok=True)
-                
+
                 # 生成输出文件名（基于输入文件名）
                 input_filename = os.path.basename(file_path)
                 output_filename = f"{os.path.splitext(input_filename)[0]}_ocr_result.md"
                 output_path = output_dir / output_filename
-                
+
                 # 写入内容到文件
-                with open(output_path, 'w', encoding='utf-8') as f:
+                with open(output_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                
+
                 logger.info(f"OCR结果已保存到: {output_path}")
                 return True, content, track_id
             else:
-                logger.error(f"[File Extraction]OCR failed: {result.get('detail', 'Unknown error')}")
+                logger.error(
+                    f"[File Extraction]OCR failed: {result.get('detail', 'Unknown error')}"
+                )
                 error_files = [
                     {
                         "file_path": str(file_path.name),
@@ -904,7 +904,9 @@ async def process_with_ocr(file_path, file_size, track_id, rag, logger):
                 await rag.apipeline_enqueue_error_documents(error_files, track_id)
                 return False, "", track_id
         else:
-            logger.error(f"[File Extraction]OCR request failed: {response.status_code} {response.text}")
+            logger.error(
+                f"[File Extraction]OCR request failed: {response.status_code} {response.text}"
+            )
             error_files = [
                 {
                     "file_path": str(file_path.name),
@@ -924,13 +926,12 @@ async def process_with_ocr(file_path, file_size, track_id, rag, logger):
                 "file_size": file_size,
             }
         ]
-        await rag.apipeline_enqueue_error_documents(
-            error_files, track_id
-        )
+        await rag.apipeline_enqueue_error_documents(error_files, track_id)
         logger.error(
             f"[File Extraction]Error processing with OCR {file_path.name}: {str(e)}"
         )
         return False, "", track_id
+
 
 async def pipeline_enqueue_file(
     rag: LightRAG, file_path: Path, track_id: str = None
@@ -1109,6 +1110,7 @@ async def pipeline_enqueue_file(
                             if not pm.is_installed("docling"):
                                 pm.install("docling")
                             from docling.document_converter import DocumentConverter  # type: ignore
+
                             converter = DocumentConverter()
                             result = converter.convert(file_path)
                             content = result.document.export_to_markdown()
@@ -1124,6 +1126,7 @@ async def pipeline_enqueue_file(
                             if global_args.document_loading_engine.upper() != "DOTSOCR":
                                 from PyPDF2 import PdfReader  # type: ignore
                                 from io import BytesIO
+
                                 reader = PdfReader(BytesIO(file))
                                 for page in reader.pages:
                                     page_text = page.extract_text()
@@ -1138,8 +1141,12 @@ async def pipeline_enqueue_file(
                                 "file_size": file_size,
                             }
                         ]
-                        await rag.apipeline_enqueue_error_documents(error_files, track_id)
-                        logger.error(f"[File Extraction]Error processing PDF {file_path.name}: {str(e)}")
+                        await rag.apipeline_enqueue_error_documents(
+                            error_files, track_id
+                        )
+                        logger.error(
+                            f"[File Extraction]Error processing PDF {file_path.name}: {str(e)}"
+                        )
                         return False, track_id
 
                 case ".docx":
@@ -1148,6 +1155,7 @@ async def pipeline_enqueue_file(
                             if not pm.is_installed("docling"):
                                 pm.install("docling")
                             from docling.document_converter import DocumentConverter  # type: ignore
+
                             converter = DocumentConverter()
                             result = converter.convert(file_path)
                             content = result.document.export_to_markdown()
@@ -1186,7 +1194,9 @@ async def pipeline_enqueue_file(
                                     if not text:
                                         continue
                                     level = _docx_style_level(
-                                        block.style.name if block.style is not None else ""
+                                        block.style.name
+                                        if block.style is not None
+                                        else ""
                                     )
                                     if level:
                                         # 标题层级保留为 Markdown，供分层切块使用
@@ -1222,8 +1232,12 @@ async def pipeline_enqueue_file(
                                 "file_size": file_size,
                             }
                         ]
-                        await rag.apipeline_enqueue_error_documents(error_files, track_id)
-                        logger.error(f"[File Extraction]Error processing DOCX {file_path.name}: {str(e)}")
+                        await rag.apipeline_enqueue_error_documents(
+                            error_files, track_id
+                        )
+                        logger.error(
+                            f"[File Extraction]Error processing DOCX {file_path.name}: {str(e)}"
+                        )
                         return False, track_id
 
                 case ".pptx":
@@ -1232,6 +1246,7 @@ async def pipeline_enqueue_file(
                             if not pm.is_installed("docling"):
                                 pm.install("docling")
                             from docling.document_converter import DocumentConverter  # type: ignore
+
                             converter = DocumentConverter()
                             result = converter.convert(file_path)
                             content = result.document.export_to_markdown()
@@ -1240,6 +1255,7 @@ async def pipeline_enqueue_file(
                                 pm.install("python-pptx")
                             from pptx import Presentation  # type: ignore
                             from io import BytesIO
+
                             prs = Presentation(BytesIO(file))
                             for slide in prs.slides:
                                 for shape in slide.shapes:
@@ -1255,8 +1271,12 @@ async def pipeline_enqueue_file(
                                 "file_size": file_size,
                             }
                         ]
-                        await rag.apipeline_enqueue_error_documents(error_files, track_id)
-                        logger.error(f"[File Extraction]Error processing PPTX {file_path.name}: {str(e)}")
+                        await rag.apipeline_enqueue_error_documents(
+                            error_files, track_id
+                        )
+                        logger.error(
+                            f"[File Extraction]Error processing PPTX {file_path.name}: {str(e)}"
+                        )
                         return False, track_id
 
                 case ".xlsx":
@@ -1351,7 +1371,7 @@ async def pipeline_enqueue_file(
                 )
             except Exception as exc:
                 logger.warning("位置解析跳过 %s：%s", file_path.name, exc)
-            content = re.sub(r'\n{3,}', '\n\n', content)  # 核心：压缩多换行
+            content = re.sub(r"\n{3,}", "\n\n", content)  # 核心：压缩多换行
             #################################################################################
             # 将content内容输出到文档中
             # 创建输出目录
@@ -1359,16 +1379,16 @@ async def pipeline_enqueue_file(
 
             output_dir = BASE_DIR / "output"
             output_dir.mkdir(exist_ok=True)
-            
+
             # 生成输出文件名（基于输入文件名）
             input_filename = os.path.basename(file_path)
             output_filename = f"{os.path.splitext(input_filename)[0]}_ocr_result.md"
             output_path = output_dir / output_filename
-            
+
             # 写入内容到文件
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             logger.info(f"OCR结果已保存到: {output_path}")
             #################################################################################
 
@@ -1812,13 +1832,15 @@ async def background_delete_documents(
             except Exception as e:
                 logger.error(f"Error processing pending documents after deletion: {e}")
 
-#chunks查询
+
+# chunks查询
 class ChunkItem(BaseModel):
     chunk_id: str
     file_path: str | None = None
     created_at: str | None = None
     content: str
     preview: str
+
 
 class ChunksListResponse(BaseModel):
     doc_id: str
@@ -1828,17 +1850,20 @@ class ChunksListResponse(BaseModel):
     page_size: int
     items: list[ChunkItem]
 
+
 class GetChunksByIdRequest(BaseModel):
     doc_id: str = Field(..., description="Document ID")
     page: int = Field(1, ge=1, description="Page number (1-based)")
     page_size: int = Field(20, ge=1, le=200, description="Items per page")
+
 
 class GetChunksByFilenameRequest(BaseModel):
     filename: str = Field(..., description="File name to match")
     fuzzy: bool = Field(True, description="Enable fuzzy (substring) match")
     page: int = Field(1, ge=1, description="Page number (1-based)")
     page_size: int = Field(20, ge=1, le=200, description="Items per page")
-    
+
+
 def _extract_status_fields(status):
     """
     兼容 dict / dataclass 两种形态，返回 (file_path, chunks_list, created_at, updated_at)
@@ -1858,6 +1883,7 @@ def _extract_status_fields(status):
         updated_at = getattr(status, "updated_at", None)
 
     return file_path, chunks_list, created_at, updated_at
+
 
 def create_document_routes(
     rag: LightRAG, doc_manager: DocumentManager, api_key: Optional[str] = None
@@ -1879,7 +1905,9 @@ def create_document_routes(
         status = await rag.doc_status.get_by_id(req.doc_id)
         file_path, chunks_list, _, _ = _extract_status_fields(status)
         if not chunks_list:
-            raise HTTPException(status_code=404, detail="Document not found or no chunks")
+            raise HTTPException(
+                status_code=404, detail="Document not found or no chunks"
+            )
 
         total = len(chunks_list)
         start = (req.page - 1) * req.page_size
@@ -1916,14 +1944,21 @@ def create_document_routes(
         dependencies=[Depends(combined_auth)],
         summary="List chunks by file name (supports fuzzy match) with pagination",
     )
-    async def list_chunks_by_filename(req: GetChunksByFilenameRequest) -> ChunksListResponse:
+    async def list_chunks_by_filename(
+        req: GetChunksByFilenameRequest,
+    ) -> ChunksListResponse:
         """
         按文件名匹配并返回第一条匹配到的文档的块清单（分页）。
         - fuzzy=True: 子串匹配（不区分大小写）
         - fuzzy=False: 完全相等匹配
         """
         # 拉取所有状态，重用现有 /documents 的做法
-        statuses = (DocStatus.PENDING, DocStatus.PROCESSING, DocStatus.PROCESSED, DocStatus.FAILED)
+        statuses = (
+            DocStatus.PENDING,
+            DocStatus.PROCESSING,
+            DocStatus.PROCESSED,
+            DocStatus.FAILED,
+        )
         results = await asyncio.gather(*[rag.get_docs_by_status(s) for s in statuses])
 
         target_doc_id = None
@@ -1935,7 +1970,11 @@ def create_document_routes(
                 fp = (st.file_path or "").lower()
                 if not fp:
                     continue
-                ok = (needle in fp) if req.fuzzy else (fp.endswith(needle) or fp == needle)
+                ok = (
+                    (needle in fp)
+                    if req.fuzzy
+                    else (fp.endswith(needle) or fp == needle)
+                )
                 if ok:
                     target_doc_id = doc_id
                     target_status = st
@@ -1944,7 +1983,9 @@ def create_document_routes(
                 break
 
         if not target_doc_id or not target_status or not target_status.chunks_list:
-            raise HTTPException(status_code=404, detail="No document matched the filename or no chunks")
+            raise HTTPException(
+                status_code=404, detail="No document matched the filename or no chunks"
+            )
 
         total = len(target_status.chunks_list)
         start = (req.page - 1) * req.page_size

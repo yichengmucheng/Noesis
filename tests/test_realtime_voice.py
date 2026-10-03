@@ -1,4 +1,3 @@
-import asyncio
 import json
 import sys
 import time
@@ -23,7 +22,10 @@ def test_voice_conversation_controls_do_not_enter_knowledge_retrieval(monkeypatc
     monkeypatch.setattr(sys, "argv", [sys.argv[0]])
     from lightrag.api.routers.product_shell import _voice_local_intent
 
-    assert _voice_local_intent("OK，结束吧。") == ("finish", "好的，那我们先聊到这里。需要的时候再找我。")
+    assert _voice_local_intent("OK，结束吧。") == (
+        "finish",
+        "好的，那我们先聊到这里。需要的时候再找我。",
+    )
     assert _voice_local_intent("谢谢你") == ("ack", "不客气，你可以继续问我。")
     assert _voice_local_intent("Maas 百事通是怎么做的") is None
 
@@ -87,13 +89,36 @@ def test_aliyun_signature_is_deterministic_without_exposing_secret():
 
 
 def test_transcriber_events_include_incremental_and_final_text():
-    changed = parse_transcriber_event(json.dumps({"header": {"name": "TranscriptionResultChanged"}, "payload": {"result": "你好"}}))
-    final = parse_transcriber_event(json.dumps({"header": {"name": "SentenceEnd"}, "payload": {"result": "你好。"}}))
-    failed = parse_transcriber_event(json.dumps({
-        "header": {"name": "TaskFailed", "status": 40000002, "status_text": "MESSAGE_INVALID"},
-        "payload": {},
-    }))
-    assert changed == {"type": "transcript", "text": "你好", "final": False, "sentence_id": None, "event": "TranscriptionResultChanged"}
+    changed = parse_transcriber_event(
+        json.dumps(
+            {
+                "header": {"name": "TranscriptionResultChanged"},
+                "payload": {"result": "你好"},
+            }
+        )
+    )
+    final = parse_transcriber_event(
+        json.dumps({"header": {"name": "SentenceEnd"}, "payload": {"result": "你好。"}})
+    )
+    failed = parse_transcriber_event(
+        json.dumps(
+            {
+                "header": {
+                    "name": "TaskFailed",
+                    "status": 40000002,
+                    "status_text": "MESSAGE_INVALID",
+                },
+                "payload": {},
+            }
+        )
+    )
+    assert changed == {
+        "type": "transcript",
+        "text": "你好",
+        "final": False,
+        "sentence_id": None,
+        "event": "TranscriptionResultChanged",
+    }
     assert final["final"] is True
     assert failed["type"] == "provider_error"
     assert failed["provider_code"] == "40000002"
@@ -132,13 +157,15 @@ async def test_open_transcriber_waits_for_provider_ready(monkeypatch):
             self.sent.append(value)
 
         async def recv(self):
-            return json.dumps({"header": {"name": "SynthesisStarted"}})
-
-        async def recv(self):
-            return json.dumps({
-                "header": {"name": "TranscriptionStarted", "task_id": "provider-task"},
-                "payload": {},
-            })
+            return json.dumps(
+                {
+                    "header": {
+                        "name": "TranscriptionStarted",
+                        "task_id": "provider-task",
+                    },
+                    "payload": {},
+                }
+            )
 
         async def close(self):
             self.closed = True
@@ -153,7 +180,9 @@ async def test_open_transcriber_waits_for_provider_ready(monkeypatch):
 
     monkeypatch.setattr(voice.websockets, "connect", connect)
     monkeypatch.setattr(voice, "create_aliyun_token", token)
-    result = await open_aliyun_transcriber(AliyunNlsConfig(app_key="app-key", token="token"))
+    result = await open_aliyun_transcriber(
+        AliyunNlsConfig(app_key="app-key", token="token")
+    )
     assert result[0] is socket
     assert result[2] == "app-key"
     assert len(socket.sent) == 1
@@ -162,7 +191,12 @@ async def test_open_transcriber_waits_for_provider_ready(monkeypatch):
 
 
 def test_aliyun_config_requires_app_key_and_credentials(monkeypatch):
-    for key in ("ALIYUN_NLS_APP_KEY", "ALIYUN_NLS_TOKEN", "ALIYUN_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_SECRET"):
+    for key in (
+        "ALIYUN_NLS_APP_KEY",
+        "ALIYUN_NLS_TOKEN",
+        "ALIYUN_ACCESS_KEY_ID",
+        "ALIYUN_ACCESS_KEY_SECRET",
+    ):
         monkeypatch.delenv(key, raising=False)
     assert not AliyunNlsConfig.from_env().configured
     assert not AliyunNlsTtsConfig.from_env().configured
@@ -222,7 +256,9 @@ async def test_aliyun_token_is_reused_until_refresh_window(monkeypatch):
         status_code = 200
 
         def json(self):
-            return {"Token": {"Id": "cached-token", "ExpireTime": int(time.time()) + 3600}}
+            return {
+                "Token": {"Id": "cached-token", "ExpireTime": int(time.time()) + 3600}
+            }
 
     class Client:
         calls = 0
@@ -304,7 +340,6 @@ async def test_aliyun_tts_sends_text_in_start_directive(monkeypatch):
             return False
 
         async def send(self, value):
-            message = json.loads(value)
             self.sent.append(value)
 
         def __aiter__(self):
@@ -340,7 +375,11 @@ def test_realtime_websocket_auth_and_kb_scope(tmp_path, monkeypatch):
         json={"email": "voice-b@example.com", "password": "correct-horse"},
         headers=csrf,
     ).json()
-    kb = client.post("/api/v1/kb", json={"name": "A"}, headers={**csrf, "Authorization": f"Bearer {first['access_token']}"}).json()["id"]
+    kb = client.post(
+        "/api/v1/kb",
+        json={"name": "A"},
+        headers={**csrf, "Authorization": f"Bearer {first['access_token']}"},
+    ).json()["id"]
 
     with client.websocket_connect("/api/v1/voice/realtime") as socket:
         socket.send_json({"type": "start", "kb_id": kb})

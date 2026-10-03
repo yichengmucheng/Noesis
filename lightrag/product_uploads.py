@@ -21,7 +21,9 @@ def _safe_id(value: str, label: str) -> str:
     return text
 
 
-def allocate_upload(data: dict[str, Any], owner_id: str, kb_id: str, display_name: str) -> dict[str, Any]:
+def allocate_upload(
+    data: dict[str, Any], owner_id: str, kb_id: str, display_name: str
+) -> dict[str, Any]:
     owner = _safe_id(owner_id, "用户")
     kb = _safe_id(kb_id, "知识库")
     name = Path(str(display_name or "")).name

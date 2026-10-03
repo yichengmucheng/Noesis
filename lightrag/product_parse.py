@@ -88,7 +88,10 @@ def parse_bytes(name: str, payload: bytes, document_id: str) -> DocumentIR:
     elif source_type == "txt":
         units, summary = _text_units(_decode(payload))
     else:
-        units, summary = [], {"extracted": False, "reason": "本阶段不解析图片和语音正文"}
+        units, summary = (
+            [],
+            {"extracted": False, "reason": "本阶段不解析图片和语音正文"},
+        )
     return DocumentIR(
         document_id=document_id,
         version_id=checksum[:16],
@@ -111,7 +114,12 @@ def chunks_from_document(
     rows: list[dict[str, Any]] = []
     for text, units in _structure_blocks(document):
         for piece in _split_tokens(text, chunk_size, chunk_overlap):
-            covered = [unit for unit in units if unit.content.strip() and (unit.content.strip() in piece or piece in unit.content.strip())]
+            covered = [
+                unit
+                for unit in units
+                if unit.content.strip()
+                and (unit.content.strip() in piece or piece in unit.content.strip())
+            ]
             if not covered:
                 covered = list(units[:1])
             record = chunk_record(user_id, kb_id, doc_id, len(rows) + 1, piece)
@@ -123,16 +131,23 @@ def chunks_from_document(
 def save_ir(working_dir: str | Path, document: DocumentIR) -> None:
     from lightrag.product_storage import _write_json
 
-    _write_json(Path(working_dir) / "document_ir" / f"{document.document_id}.json", document.to_dict())
+    _write_json(
+        Path(working_dir) / "document_ir" / f"{document.document_id}.json",
+        document.to_dict(),
+    )
 
 
-def remember_document(working_dir: str | Path, source_path: str | Path, document: DocumentIR) -> None:
+def remember_document(
+    working_dir: str | Path, source_path: str | Path, document: DocumentIR
+) -> None:
     from lightrag.product_storage import _write_json
 
     _write_json(_pending_path(working_dir, source_path), document.to_dict())
 
 
-def claim_document(working_dir: str | Path, source_path: str | Path, doc_id: str) -> DocumentIR | None:
+def claim_document(
+    working_dir: str | Path, source_path: str | Path, doc_id: str
+) -> DocumentIR | None:
     """只读取这条文件路径对应的一份中间表示，并改记为当前 doc_id。"""
     from lightrag.product_storage import _read_json
 
@@ -190,7 +205,9 @@ def prefer_located_text(
     return located or content
 
 
-def bind_pipeline_chunks(chunks: dict[str, Any], file_path: str, doc_id: str, working_dir: str | Path) -> None:
+def bind_pipeline_chunks(
+    chunks: dict[str, Any], file_path: str, doc_id: str, working_dir: str | Path
+) -> None:
     document = claim_document(working_dir, file_path, doc_id)
     if document is None:
         return
@@ -210,7 +227,9 @@ def bind_document_chunks(chunks: dict[str, Any], document: DocumentIR | None) ->
         matched = [
             unit
             for unit in leaves
-            if unit.content.strip() and len(unit.content.strip()) >= 2 and (unit.content.strip() in content or content in unit.content.strip())
+            if unit.content.strip()
+            and len(unit.content.strip()) >= 2
+            and (unit.content.strip() in content or content in unit.content.strip())
         ]
         if not matched:
             continue
@@ -225,14 +244,18 @@ def _pending_path(working_dir: str | Path, source_path: str | Path) -> Path:
     return Path(working_dir) / "document_ir" / "pending" / f"{digest}.json"
 
 
-def _attach_evidence(record: dict[str, Any], document: DocumentIR, units: list[SourceUnit], excerpt: str) -> None:
+def _attach_evidence(
+    record: dict[str, Any], document: DocumentIR, units: list[SourceUnit], excerpt: str
+) -> None:
     refs: list[dict[str, Any]] = []
     seen: set[str] = set()
     for unit in units:
         if unit.unit_id in seen:
             continue
         seen.add(unit.unit_id)
-        evidence = document.evidence(str(record["chunk_id"]), unit.unit_id, excerpt=excerpt[:240])
+        evidence = document.evidence(
+            str(record["chunk_id"]), unit.unit_id, excerpt=excerpt[:240]
+        )
         data = evidence.to_dict()
         refs.append(
             {
@@ -270,14 +293,26 @@ def _attach_evidence(record: dict[str, Any], document: DocumentIR, units: list[S
 
 def _structure_blocks(document: DocumentIR) -> list[tuple[str, list[SourceUnit]]]:
     if document.source_type == "pdf":
-        return [(unit.content.strip(), [unit]) for unit in document.units if unit.unit_type == "page" and unit.content.strip()]
+        return [
+            (unit.content.strip(), [unit])
+            for unit in document.units
+            if unit.unit_type == "page" and unit.content.strip()
+        ]
     if document.source_type == "pptx":
-        return [(unit.content.strip(), [unit]) for unit in document.units if unit.unit_type == "slide" and unit.content.strip()]
+        return [
+            (unit.content.strip(), [unit])
+            for unit in document.units
+            if unit.unit_type == "slide" and unit.content.strip()
+        ]
     if document.source_type == "xlsx":
         return _sheet_blocks(document)
     if document.source_type == "docx":
         return _docx_blocks(document)
-    return [(unit.content.strip(), [unit]) for unit in leaf_units(document) if unit.content.strip()]
+    return [
+        (unit.content.strip(), [unit])
+        for unit in leaf_units(document)
+        if unit.content.strip()
+    ]
 
 
 def _docx_blocks(document: DocumentIR) -> list[tuple[str, list[SourceUnit]]]:
@@ -293,7 +328,11 @@ def _docx_blocks(document: DocumentIR) -> list[tuple[str, list[SourceUnit]]]:
     for unit in document.units:
         if unit.unit_type == "table":
             flush()
-            cells = [child for child in unit.walk() if child.unit_type == "cell" and child.content.strip()]
+            cells = [
+                child
+                for child in unit.walk()
+                if child.unit_type == "cell" and child.content.strip()
+            ]
             body = "\n".join(child.content.strip() for child in cells)
             if body:
                 blocks.append((body, cells or [unit]))
@@ -310,7 +349,11 @@ def _sheet_blocks(document: DocumentIR) -> list[tuple[str, list[SourceUnit]]]:
     for sheet in document.units:
         if sheet.unit_type != "sheet":
             continue
-        cells = [child for child in sheet.walk() if child.unit_type == "cell" and child.content.strip()]
+        cells = [
+            child
+            for child in sheet.walk()
+            if child.unit_type == "cell" and child.content.strip()
+        ]
         grouped: dict[int, list[SourceUnit]] = {}
         for cell in cells:
             matched = re.search(r"(\d+)$", cell.cell_range or "")
@@ -320,17 +363,24 @@ def _sheet_blocks(document: DocumentIR) -> list[tuple[str, list[SourceUnit]]]:
         if not grouped:
             continue
         header_row = min(grouped)
-        headers = { _column_of(cell.cell_range): cell for cell in grouped[header_row] }
+        headers = {_column_of(cell.cell_range): cell for cell in grouped[header_row]}
         data_rows = [row for row in sorted(grouped) if row != header_row]
         if not data_rows:
-            blocks.append(("\n".join(cell.content.strip() for cell in grouped[header_row]), grouped[header_row]))
+            blocks.append(
+                (
+                    "\n".join(cell.content.strip() for cell in grouped[header_row]),
+                    grouped[header_row],
+                )
+            )
             continue
         for row in data_rows:
             lines = [f"工作表 {sheet.sheet_name}".strip()]
             used = []
             for cell in grouped[row]:
                 header = headers.get(_column_of(cell.cell_range))
-                label = header.content.strip() if header is not None else cell.cell_range
+                label = (
+                    header.content.strip() if header is not None else cell.cell_range
+                )
                 lines.append(f"{label}: {cell.content.strip()}")
                 used.append(cell)
                 if header is not None:
@@ -473,7 +523,11 @@ def _markdown_units(text: str) -> tuple[list[SourceUnit], dict[str, Any]]:
             flush()
             level = len(heading.group(1))
             title = heading.group(2).strip()
-            stack = [(item_level, item_name) for item_level, item_name in stack if item_level < level]
+            stack = [
+                (item_level, item_name)
+                for item_level, item_name in stack
+                if item_level < level
+            ]
             stack.append((level, title))
             units.append(
                 SourceUnit(
@@ -514,8 +568,16 @@ def _pdf_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
             text = ""
         if not text:
             continue
-        units.append(SourceUnit(unit_id=f"p{index}", unit_type="page", page_number=index, content=text))
-    return units, {"page_count": len(reader.pages), "located_pages": len(units), "bbox": None}
+        units.append(
+            SourceUnit(
+                unit_id=f"p{index}", unit_type="page", page_number=index, content=text
+            )
+        )
+    return units, {
+        "page_count": len(reader.pages),
+        "located_pages": len(units),
+        "bbox": None,
+    }
 
 
 def _docx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
@@ -565,11 +627,29 @@ def _docx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
                 continue
             level = level_of(block.style.name if block.style is not None else "")
             if level:
-                stack = [(item_level, item_name) for item_level, item_name in stack if item_level < level]
+                stack = [
+                    (item_level, item_name)
+                    for item_level, item_name in stack
+                    if item_level < level
+                ]
                 stack.append((level, text))
-                units.append(SourceUnit(unit_id=take("s"), unit_type="section", section_path=path(), content=text))
+                units.append(
+                    SourceUnit(
+                        unit_id=take("s"),
+                        unit_type="section",
+                        section_path=path(),
+                        content=text,
+                    )
+                )
             else:
-                units.append(SourceUnit(unit_id=take("t"), unit_type="text", section_path=path(), content=text))
+                units.append(
+                    SourceUnit(
+                        unit_id=take("t"),
+                        unit_type="text",
+                        section_path=path(),
+                        content=text,
+                    )
+                )
             continue
         cells: list[SourceUnit] = []
         table_id = take("tbl")
@@ -590,7 +670,14 @@ def _docx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
                     )
                 )
         if cells:
-            units.append(SourceUnit(unit_id=table_id, unit_type="table", section_path=path(), children=cells))
+            units.append(
+                SourceUnit(
+                    unit_id=table_id,
+                    unit_type="table",
+                    section_path=path(),
+                    children=cells,
+                )
+            )
     return units, {"blocks": len(units), "bbox": None}
 
 
@@ -614,9 +701,18 @@ def _pptx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
         if not lines:
             continue
         units.append(
-            SourceUnit(unit_id=f"slide{index}", unit_type="slide", slide_number=index, content="\n".join(lines))
+            SourceUnit(
+                unit_id=f"slide{index}",
+                unit_type="slide",
+                slide_number=index,
+                content="\n".join(lines),
+            )
         )
-    return units, {"slide_count": len(presentation.slides), "located_slides": len(units), "bbox": None}
+    return units, {
+        "slide_count": len(presentation.slides),
+        "located_slides": len(units),
+        "bbox": None,
+    }
 
 
 def _xlsx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
@@ -634,7 +730,9 @@ def _xlsx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
         for sheet_index, sheet in enumerate(book.worksheets, start=1):
             cells: list[SourceUnit] = []
             sheet_id = f"sheet{sheet_index}"
-            for row_index, row in enumerate(sheet.iter_rows(max_row=200, max_col=40), start=1):
+            for row_index, row in enumerate(
+                sheet.iter_rows(max_row=200, max_col=40), start=1
+            ):
                 if row_index >= 200:
                     truncated = True
                 for cell in row:
@@ -657,7 +755,12 @@ def _xlsx_units(payload: bytes) -> tuple[list[SourceUnit], dict[str, Any]]:
                     )
             if cells:
                 units.append(
-                    SourceUnit(unit_id=sheet_id, unit_type="sheet", sheet_name=str(sheet.title), children=cells)
+                    SourceUnit(
+                        unit_id=sheet_id,
+                        unit_type="sheet",
+                        sheet_name=str(sheet.title),
+                        children=cells,
+                    )
                 )
     finally:
         book.close()

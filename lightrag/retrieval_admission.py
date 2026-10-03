@@ -58,7 +58,9 @@ def active_profile_name() -> str:
     profiles = _profiles()
     if forced:
         if env == "production" and (forced == "ci" or forced not in profiles):
-            raise RuntimeError("生产环境不能使用 ci 画像，也没有匹配的检索画像，拒绝启动")
+            raise RuntimeError(
+                "生产环境不能使用 ci 画像，也没有匹配的检索画像，拒绝启动"
+            )
         return forced
     matched = profile_name_for_model(model)
     if matched:
@@ -86,10 +88,16 @@ def hybrid_ratio_key(ratio: float) -> str:
         return "0"
     if snapped == 1:
         return "1"
-    return f"{snapped:.2f}".rstrip("0").rstrip(".") if snapped not in (0.25, 0.5, 0.75) else str(snapped)
+    return (
+        f"{snapped:.2f}".rstrip("0").rstrip(".")
+        if snapped not in (0.25, 0.5, 0.75)
+        else str(snapped)
+    )
 
 
-def mode_rule(mode: str, profile: str | None = None, ratio: float = 0.5) -> dict[str, Any]:
+def mode_rule(
+    mode: str, profile: str | None = None, ratio: float = 0.5
+) -> dict[str, Any]:
     name = profile or active_profile_name()
     profiles = _profiles()
     if name not in profiles:
@@ -131,7 +139,11 @@ def rerank_binding_matches(profile: str | None = None) -> bool:
         return False
     expected_dim = binding.get("embedding_dimension")
     actual_dim = os.getenv("EMBEDDING_DIM", "").strip()
-    if expected_dim not in (None, "") and actual_dim and str(expected_dim) != actual_dim:
+    if (
+        expected_dim not in (None, "")
+        and actual_dim
+        and str(expected_dim) != actual_dim
+    ):
         return False
     expected_embed = str(binding.get("embedding_model") or "")
     actual_embed = os.getenv("EMBEDDING_MODEL", "").strip()
@@ -144,7 +156,9 @@ def rerank_binding_matches(profile: str | None = None) -> bool:
     return True
 
 
-def admission_probability(raw: float | None, floor: float, temperature: float) -> float | None:
+def admission_probability(
+    raw: float | None, floor: float, temperature: float
+) -> float | None:
     if raw is None:
         return None
     scale = temperature if temperature > 0 else 0.08
@@ -162,22 +176,36 @@ def signal_value(item: dict[str, Any], signal: str, ratio: float = 0.5) -> float
     if signal == "blend":
         if vector is None and keyword is None:
             return None
-        return float(ratio) * float(vector or 0) + (1 - float(ratio)) * float(keyword or 0)
+        return float(ratio) * float(vector or 0) + (1 - float(ratio)) * float(
+            keyword or 0
+        )
     if signal == "max":
-        values = [float(value) for value in (vector, keyword, rerank) if value is not None]
+        values = [
+            float(value) for value in (vector, keyword, rerank) if value is not None
+        ]
         return max(values) if values else None
     if vector is None:
         return None
     return float(vector)
 
 
-def annotate_admission(item: dict[str, Any], mode: str, ratio: float = 0.5) -> dict[str, Any]:
+def annotate_admission(
+    item: dict[str, Any], mode: str, ratio: float = 0.5
+) -> dict[str, Any]:
     """写入 ranking_score 与 admission_score。没有信号时标记为不可信。"""
-    selected = "rerank" if item.get("reranked") and item.get("rerank_score") is not None else mode
+    selected = (
+        "rerank"
+        if item.get("reranked") and item.get("rerank_score") is not None
+        else mode
+    )
     if selected == "rerank" and not rerank_binding_matches():
         if _app_env() == "production":
             raise RuntimeError("重排模型与准入画像不一致，不能复用旧门槛")
-        item["ranking_score"] = None if item.get("ranking_score") is None else float(item.get("ranking_score") or item.get("score") or 0)
+        item["ranking_score"] = (
+            None
+            if item.get("ranking_score") is None
+            else float(item.get("ranking_score") or item.get("score") or 0)
+        )
         item["admission_score"] = None
         item["calibrated_score"] = None
         item["untrusted"] = True
@@ -185,7 +213,9 @@ def annotate_admission(item: dict[str, Any], mode: str, ratio: float = 0.5) -> d
         return item
     rule = mode_rule(selected, ratio=ratio)
     raw_signal = signal_value(item, str(rule.get("signal") or "vector"), ratio)
-    probability = admission_probability(raw_signal, float(rule["floor"]), float(rule["temperature"]))
+    probability = admission_probability(
+        raw_signal, float(rule["floor"]), float(rule["temperature"])
+    )
     ranking = item.get("ranking_score")
     if ranking is None:
         ranking = item.get("score")

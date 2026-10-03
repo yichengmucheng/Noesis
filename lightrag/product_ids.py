@@ -50,7 +50,9 @@ def entity_id(kb_id: str, entity_type: str, name: str, model: str = "") -> str:
     return "ent-" + _digest(kb, kind, label, _norm(model))
 
 
-def relation_id(kb_id: str, src_entity_id: str, relation_type: str, tgt_entity_id: str) -> str:
+def relation_id(
+    kb_id: str, src_entity_id: str, relation_type: str, tgt_entity_id: str
+) -> str:
     kb = str(kb_id or "").strip()
     src = str(src_entity_id or "").strip()
     tgt = str(tgt_entity_id or "").strip()
@@ -143,13 +145,48 @@ def relation_record(
 
 # 每个标识由谁保存、谁只拿来过滤或跳转。
 STORE_OF = {
-    "user_id": {"postgres": "scope", "milvus": "filter", "neo4j": "property", "object": "path"},
-    "kb_id": {"postgres": "scope", "milvus": "filter", "neo4j": "property", "object": "path"},
-    "doc_id": {"postgres": "documents", "milvus": "filter", "neo4j": "property", "object": "path"},
-    "chunk_id": {"postgres": "chunks", "milvus": "chunks", "neo4j": "via source_id", "object": ""},
-    "entity_id": {"postgres": "entities", "milvus": "entities", "neo4j": "node", "object": ""},
-    "relation_id": {"postgres": "relations", "milvus": "relations", "neo4j": "relationship", "object": ""},
-    "source_id": {"postgres": "sources", "milvus": "filter", "neo4j": "evidence", "object": ""},
+    "user_id": {
+        "postgres": "scope",
+        "milvus": "filter",
+        "neo4j": "property",
+        "object": "path",
+    },
+    "kb_id": {
+        "postgres": "scope",
+        "milvus": "filter",
+        "neo4j": "property",
+        "object": "path",
+    },
+    "doc_id": {
+        "postgres": "documents",
+        "milvus": "filter",
+        "neo4j": "property",
+        "object": "path",
+    },
+    "chunk_id": {
+        "postgres": "chunks",
+        "milvus": "chunks",
+        "neo4j": "via source_id",
+        "object": "",
+    },
+    "entity_id": {
+        "postgres": "entities",
+        "milvus": "entities",
+        "neo4j": "node",
+        "object": "",
+    },
+    "relation_id": {
+        "postgres": "relations",
+        "milvus": "relations",
+        "neo4j": "relationship",
+        "object": "",
+    },
+    "source_id": {
+        "postgres": "sources",
+        "milvus": "filter",
+        "neo4j": "evidence",
+        "object": "",
+    },
 }
 
 
@@ -165,11 +202,18 @@ def check_bundle(rows: list[dict[str, Any]]) -> None:
         if row.get("relation_id"):
             if row.get("source_id") not in chunks:
                 raise ValueError("关系的 source_id 必须指向已有 chunk_id")
-            if row.get("src_entity_id") not in entities or row.get("tgt_entity_id") not in entities:
+            if (
+                row.get("src_entity_id") not in entities
+                or row.get("tgt_entity_id") not in entities
+            ):
                 raise ValueError("关系两端必须是已有 entity_id")
         for key in ("user_id", "kb_id", "doc_id"):
             if key in row and not str(row.get(key) or "").strip():
                 raise ValueError(f"{key} 不能为空")
         name = str(row.get("name") or "")
-        if name and name in {row.get("entity_id"), row.get("chunk_id"), row.get("doc_id")}:
+        if name and name in {
+            row.get("entity_id"),
+            row.get("chunk_id"),
+            row.get("doc_id"),
+        }:
             raise ValueError("显示名称不能充当物理主键")

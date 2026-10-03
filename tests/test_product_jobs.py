@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """任务持久化、租约、重试和上传接口。使用临时目录，不碰 9621 的开发数据。"""
+
 import os
 import subprocess
 import sys
@@ -17,7 +18,14 @@ from lightrag.product_db import SqliteStore, public_job
 from lightrag.product_deletion import begin_purge
 from lightrag.product_ingest import content_key, reset_stage_failures
 from lightrag.product_scope import scope_visible
-from lightrag.product_storage import _graph, _kv, _save_kv, _vdb_rows, load_shell, save_shell
+from lightrag.product_storage import (
+    _graph,
+    _kv,
+    _save_kv,
+    _vdb_rows,
+    load_shell,
+    save_shell,
+)
 from lightrag.product_storage_check import repair_safe, scan
 from lightrag.product_uploads import allocate_upload
 from lightrag.product_worker import import_pending_purges, serve, worker_loop
@@ -39,7 +47,15 @@ def _bind(monkeypatch, working: Path, inputs: Path, **extra: str) -> None:
     monkeypatch.setenv("MAX_CONCURRENT_JOBS_PER_USER", "2")
     monkeypatch.setenv("MAX_CONCURRENT_JOBS_PER_KB", "2")
     monkeypatch.setenv("INGEST_RUNTIME", "lightrag.testing_index_runtime:runtime")
-    for name in ("JOB_FAIL_STAGE", "JOB_FAIL_TIMES", "JOB_FAIL_CODE", "JOB_PAUSE_STAGE", "JOB_PAUSE_SECONDS", "JOB_FORCE_CONSISTENCY_FAIL", "WORKER_MAX_JOBS"):
+    for name in (
+        "JOB_FAIL_STAGE",
+        "JOB_FAIL_TIMES",
+        "JOB_FAIL_CODE",
+        "JOB_PAUSE_STAGE",
+        "JOB_PAUSE_SECONDS",
+        "JOB_FORCE_CONSISTENCY_FAIL",
+        "WORKER_MAX_JOBS",
+    ):
         monkeypatch.delenv(name, raising=False)
     for key, value in extra.items():
         monkeypatch.setenv(key, value)
@@ -52,13 +68,23 @@ def _workspace(tmp_path: Path, user: str = "user-a", kb: str = "kb-a"):
     working.mkdir()
     inputs.mkdir()
     data = load_shell(working)
-    data["kbs"] = [{"id": kb, "owner_id": user, "name": kb, "settings": {}, "graph_config": {}}]
+    data["kbs"] = [
+        {"id": kb, "owner_id": user, "name": kb, "settings": {}, "graph_config": {}}
+    ]
     save_shell(working, data)
     store = SqliteStore(working / "product_jobs.sqlite")
     return working, inputs, store
 
 
-def _queue(store, working: Path, inputs: Path, text: str, user="user-a", kb="kb-a", name="note.txt"):
+def _queue(
+    store,
+    working: Path,
+    inputs: Path,
+    text: str,
+    user="user-a",
+    kb="kb-a",
+    name="note.txt",
+):
     data = load_shell(working)
     record = allocate_upload(data, user, kb, name)
     record["status"] = "queued"
@@ -67,35 +93,54 @@ def _queue(store, working: Path, inputs: Path, text: str, user="user-a", kb="kb-
     payload = text.encode("utf-8")
     dest.write_bytes(payload)
     save_shell(working, data)
-    job = store.create_job({
-        "job_type": "ingestion",
-        "user_id": user,
-        "kb_id": kb,
-        "doc_id": record["doc_id"],
-        "file_name": name,
-        "file_path": record["storage_key"],
-        "idempotency_key": content_key(user, kb, payload),
-        "input_snapshot": {"owner_id": user, "storage_key": record["storage_key"]},
-    })
+    job = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": user,
+            "kb_id": kb,
+            "doc_id": record["doc_id"],
+            "file_name": name,
+            "file_path": record["storage_key"],
+            "idempotency_key": content_key(user, kb, payload),
+            "input_snapshot": {"owner_id": user, "storage_key": record["storage_key"]},
+        }
+    )
     return job
 
 
 def _counts(working: Path, doc_id: str) -> tuple[int, int, int]:
-    chunks = sum(1 for row in _kv(working, "text_chunks").values() if str(row.get("doc_id") or "") == doc_id)
-    vectors = sum(1 for row in _vdb_rows(working / "vdb_chunks.json") if str(row.get("doc_id") or "") == doc_id)
+    chunks = sum(
+        1
+        for row in _kv(working, "text_chunks").values()
+        if str(row.get("doc_id") or "") == doc_id
+    )
+    vectors = sum(
+        1
+        for row in _vdb_rows(working / "vdb_chunks.json")
+        if str(row.get("doc_id") or "") == doc_id
+    )
     graph, _path = _graph(working)
-    edges = sum(1 for _src, _tgt, attrs in graph.edges(data=True) if str(attrs.get("doc_id") or "") == doc_id)
+    edges = sum(
+        1
+        for _src, _tgt, attrs in graph.edges(data=True)
+        if str(attrs.get("doc_id") or "") == doc_id
+    )
     return chunks, vectors, edges
 
 
 def _hidden(working: Path, doc_id: str, kb: str) -> bool:
     data = load_shell(working)
     record = {"doc_id": doc_id, "kb_id": kb, "content": "半成品"}
-    return scope_visible(record, kb, data.get("file_bindings"), data.get("doc_index")) is False
+    return (
+        scope_visible(record, kb, data.get("file_bindings"), data.get("doc_index"))
+        is False
+    )
 
 
 def _drive(store, worker_id: str, stop: threading.Event) -> threading.Thread:
-    thread = threading.Thread(target=worker_loop, args=(store, worker_id, stop), daemon=True)
+    thread = threading.Thread(
+        target=worker_loop, args=(store, worker_id, stop), daemon=True
+    )
     thread.start()
     return thread
 
@@ -129,7 +174,9 @@ def test_same_idempotency_key_returns_the_existing_job(tmp_path, monkeypatch):
     assert store.list_jobs(user_id="user-a")["total"] == 1
     assert store.list_jobs(user_id="user-b")["total"] == 0
     assert store.request_cancel(first["job_id"], "user-b") is None
-    leaked = public_job({**first, "error_message": "traceback sk-secret C:\\secret\\file"})
+    leaked = public_job(
+        {**first, "error_message": "traceback sk-secret C:\\secret\\file"}
+    )
     assert leaked["error_message"] == "处理失败"
     assert "sk-" not in leaked["error_message"]
     assert "file_path" not in leaked
@@ -162,7 +209,11 @@ def test_worker_processes_queued_job_without_duplicate_outputs(tmp_path, monkeyp
 def test_stage_failures_retry_without_duplicating_records(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
     _bind(monkeypatch, working, inputs, JOB_FAIL_TIMES="1")
-    for stage, expected in (("parsing", (2, 2, 0)), ("embedding", (2, 2, 0)), ("graphing", (2, 2, 0))):
+    for stage, expected in (
+        ("parsing", (2, 2, 0)),
+        ("embedding", (2, 2, 0)),
+        ("graphing", (2, 2, 0)),
+    ):
         reset_stage_failures()
         monkeypatch.setenv("JOB_FAIL_STAGE", stage)
         text = f"{stage} 段落一\n\n{stage} 段落二"
@@ -178,8 +229,12 @@ def test_stage_failures_retry_without_duplicating_records(tmp_path, monkeypatch)
 
 def test_cancel_timeout_and_failed_check_are_not_searchable(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
-    _bind(monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="1.2")
-    cancelled = _queue(store, working, inputs, "取消这段\n\n不要入库", name="cancel.txt")
+    _bind(
+        monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="1.2"
+    )
+    cancelled = _queue(
+        store, working, inputs, "取消这段\n\n不要入库", name="cancel.txt"
+    )
     stop = threading.Event()
     thread = _drive(store, "worker-cancel", stop)
     deadline = time.time() + 10
@@ -216,7 +271,10 @@ def test_cancel_timeout_and_failed_check_are_not_searchable(tmp_path, monkeypatc
     thread.join(5)
     assert done["status"] == "consistency_failed"
     assert done["error_code"] == "consistency"
-    assert load_shell(working)["doc_index"][checked["doc_id"]]["status"] == "consistency_failed"
+    assert (
+        load_shell(working)["doc_index"][checked["doc_id"]]["status"]
+        == "consistency_failed"
+    )
     assert _hidden(working, checked["doc_id"], "kb-a")
 
 
@@ -246,16 +304,24 @@ def test_stage_timeout_drops_partials_and_blocks_late_writes(tmp_path, monkeypat
     assert not ir.exists()
     assert _counts(working, job["doc_id"]) == (0, 0, 0)
     if (working / "vdb_chunks.json").exists():
-        assert all(row.get("doc_id") != job["doc_id"] for row in _vdb_rows(working / "vdb_chunks.json"))
+        assert all(
+            row.get("doc_id") != job["doc_id"]
+            for row in _vdb_rows(working / "vdb_chunks.json")
+        )
     if (working / "graph_chunk_entity_relation.graphml").exists():
         graph, _path = _graph(working)
-        assert all(job["doc_id"] not in str(attrs.get("doc_id") or "") for _node, attrs in graph.nodes(data=True))
+        assert all(
+            job["doc_id"] not in str(attrs.get("doc_id") or "")
+            for _node, attrs in graph.nodes(data=True)
+        )
 
 
 def test_expired_lease_can_be_taken_over_and_restart_recovers(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
-    _bind(monkeypatch, working, inputs, JOB_LEASE_SECONDS="2", JOB_HEARTBEAT_SECONDS="30")
-    job = _queue(store, working, inputs, "租约接管\n\n继续")
+    _bind(
+        monkeypatch, working, inputs, JOB_LEASE_SECONDS="2", JOB_HEARTBEAT_SECONDS="30"
+    )
+    _queue(store, working, inputs, "租约接管\n\n继续")
     held = store.acquire("worker-old")
     assert held["status"] == "running"
     store._exec(
@@ -277,7 +343,9 @@ def test_expired_lease_can_be_taken_over_and_restart_recovers(tmp_path, monkeypa
 
 def test_graceful_stop_releases_the_lease(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
-    _bind(monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="1.5")
+    _bind(
+        monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="1.5"
+    )
     job = _queue(store, working, inputs, "优雅退出\n\n释放")
     stop = threading.Event()
     thread = _drive(store, "worker-stop", stop)
@@ -294,7 +362,9 @@ def test_graceful_stop_releases_the_lease(tmp_path, monkeypatch):
 
 def test_two_workers_do_not_run_the_same_job(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
-    _bind(monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="0.8")
+    _bind(
+        monkeypatch, working, inputs, JOB_PAUSE_STAGE="parsing", JOB_PAUSE_SECONDS="0.8"
+    )
     job = _queue(store, working, inputs, "只跑一次\n\n不要并行")
     stop = threading.Event()
     first = _drive(store, "worker-1", stop)
@@ -354,20 +424,24 @@ def test_upload_and_delete_jobs_do_not_clobber(tmp_path, monkeypatch):
     kb = next(item for item in data["kbs"] if item["id"] == "kb-b")
     shell_job = begin_purge(data, kb)
     save_shell(working, data)
-    purge = store.create_job({
-        "job_id": shell_job["job_id"],
-        "job_type": "purge",
-        "user_id": "user-a",
-        "kb_id": "kb-b",
-        "doc_id": "",
-        "idempotency_key": f"purge:kb-b:{shell_job['job_id']}",
-        "input_snapshot": {"kb_id": "kb-b"},
-    })
+    purge = store.create_job(
+        {
+            "job_id": shell_job["job_id"],
+            "job_type": "purge",
+            "user_id": "user-a",
+            "kb_id": "kb-b",
+            "doc_id": "",
+            "idempotency_key": f"purge:kb-b:{shell_job['job_id']}",
+            "input_snapshot": {"kb_id": "kb-b"},
+        }
+    )
     stop = threading.Event()
     left = _drive(store, "worker-upload", stop)
     right = _drive(store, "worker-delete", stop)
     uploaded = _wait_status(store, upload["job_id"], {"succeeded", "failed"})
-    deleted = _wait_status(store, purge["job_id"], {"succeeded", "failed", "consistency_failed"})
+    deleted = _wait_status(
+        store, purge["job_id"], {"succeeded", "failed", "consistency_failed"}
+    )
     stop.set()
     left.join(5)
     right.join(5)
@@ -377,30 +451,37 @@ def test_upload_and_delete_jobs_do_not_clobber(tmp_path, monkeypatch):
     assert _counts(working, upload["doc_id"]) == (2, 2, 0)
 
 
-def test_delete_is_idempotent_and_crash_handoff_uses_a_real_process(tmp_path, monkeypatch):
+def test_delete_is_idempotent_and_crash_handoff_uses_a_real_process(
+    tmp_path, monkeypatch
+):
     working, inputs, store = _workspace(tmp_path)
     _bind(monkeypatch, working, inputs)
     job = _queue(store, working, inputs, "崩溃后继续\n\n第二段")
     env = os.environ.copy()
     for key in list(env):
-        if any(word in key.upper() for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE")):
+        if any(
+            word in key.upper()
+            for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE")
+        ):
             env.pop(key, None)
-    env.update({
-        "WORKING_DIR": str(working),
-        "INPUT_DIR": str(inputs),
-        "DATABASE_URL": "",
-        "APP_ENV": "development",
-        "PRODUCT_AUTH": "0",
-        "WORKER_COUNT": "1",
-        "WORKER_POLL_INTERVAL": "0.2",
-        "JOB_LEASE_SECONDS": "2",
-        "JOB_HEARTBEAT_SECONDS": "30",
-        "JOB_PAUSE_STAGE": "parsing",
-        "JOB_PAUSE_SECONDS": "8",
-        "PYTHONPATH": str(ROOT),
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONUTF8": "1",
-    })
+    env.update(
+        {
+            "WORKING_DIR": str(working),
+            "INPUT_DIR": str(inputs),
+            "DATABASE_URL": "",
+            "APP_ENV": "development",
+            "PRODUCT_AUTH": "0",
+            "WORKER_COUNT": "1",
+            "WORKER_POLL_INTERVAL": "0.2",
+            "JOB_LEASE_SECONDS": "2",
+            "JOB_HEARTBEAT_SECONDS": "30",
+            "JOB_PAUSE_STAGE": "parsing",
+            "JOB_PAUSE_SECONDS": "8",
+            "PYTHONPATH": str(ROOT),
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        }
+    )
     log = tmp_path / "worker.log"
     with log.open("w", encoding="utf-8") as handle:
         proc = subprocess.Popen(
@@ -437,20 +518,24 @@ def test_delete_is_idempotent_and_crash_handoff_uses_a_real_process(tmp_path, mo
     assert finished["status"] == "succeeded"
     assert _counts(working, job["doc_id"]) == (2, 2, 0)
 
-    again = store.create_job({
-        "job_type": "delete_document",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": job["doc_id"],
-        "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
-    })
-    repeat = store.create_job({
-        "job_type": "delete_document",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": job["doc_id"],
-        "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
-    })
+    again = store.create_job(
+        {
+            "job_type": "delete_document",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": job["doc_id"],
+            "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
+        }
+    )
+    repeat = store.create_job(
+        {
+            "job_type": "delete_document",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": job["doc_id"],
+            "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
+        }
+    )
     assert again["job_id"] == repeat["job_id"]
     stop = threading.Event()
     thread = _drive(store, "worker-delete-doc", stop)
@@ -459,24 +544,32 @@ def test_delete_is_idempotent_and_crash_handoff_uses_a_real_process(tmp_path, mo
     thread.join(5)
     assert deleted["status"] == "succeeded"
     assert _counts(working, job["doc_id"]) == (0, 0, 0)
-    third = store.create_job({
-        "job_type": "delete_document",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": job["doc_id"],
-        "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
-    })
+    third = store.create_job(
+        {
+            "job_type": "delete_document",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": job["doc_id"],
+            "idempotency_key": f"delete-document:kb-a:{job['doc_id']}",
+        }
+    )
     assert third["job_id"] == again["job_id"]
     assert third["status"] == "succeeded"
 
 
-def test_unknown_owner_stays_quarantined_and_backup_can_be_restored(tmp_path, monkeypatch):
+def test_unknown_owner_stays_quarantined_and_backup_can_be_restored(
+    tmp_path, monkeypatch
+):
     working, inputs, store = _workspace(tmp_path)
     _bind(monkeypatch, working, inputs)
     data = load_shell(working)
-    data["purge_jobs"] = [{"job_id": "job-orphan", "kb_id": "kb-missing", "status": "pending"}]
+    data["purge_jobs"] = [
+        {"job_id": "job-orphan", "kb_id": "kb-missing", "status": "pending"}
+    ]
     data["kbs"].append({"id": "kb-known", "owner_id": "user-a", "name": "known"})
-    data["purge_jobs"].append({"job_id": "job-known", "kb_id": "kb-known", "status": "pending"})
+    data["purge_jobs"].append(
+        {"job_id": "job-known", "kb_id": "kb-known", "status": "pending"}
+    )
     save_shell(working, data)
     assert import_pending_purges(working, store) == 1
     assert store.get_job("job-orphan") is None
@@ -504,26 +597,35 @@ def test_production_worker_refuses_to_start_without_postgres(monkeypatch):
 def test_jobs_are_listed_filtered_and_sorted(tmp_path, monkeypatch):
     working, inputs, store = _workspace(tmp_path)
     _bind(monkeypatch, working, inputs)
-    older = store.create_job({
-        "job_type": "ingestion",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": "doc-old",
-        "idempotency_key": "ingestion:user-a:kb-a:old",
-    })
+    older = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": "doc-old",
+            "idempotency_key": "ingestion:user-a:kb-a:old",
+        }
+    )
     time.sleep(0.01)
-    newer = store.create_job({
-        "job_type": "ingestion",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": "doc-new",
-        "idempotency_key": "ingestion:user-a:kb-a:new",
-    })
+    newer = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": "doc-new",
+            "idempotency_key": "ingestion:user-a:kb-a:new",
+        }
+    )
     page = store.list_jobs(user_id="user-a", status="queued", page=1, page_size=1)
     assert page["total"] == 2
     assert page["items"][0]["job_id"] == newer["job_id"]
-    assert store.list_jobs(user_id="user-a", doc_id="doc-old")["items"][0]["job_id"] == older["job_id"]
-    failed = store.transition(older["job_id"], "failed", error_code="user_input", error_message="文件内容为空")
+    assert (
+        store.list_jobs(user_id="user-a", doc_id="doc-old")["items"][0]["job_id"]
+        == older["job_id"]
+    )
+    failed = store.transition(
+        older["job_id"], "failed", error_code="user_input", error_message="文件内容为空"
+    )
     retried = store.request_retry(failed["job_id"], "user-a")
     assert retried["status"] == "queued"
     assert retried["started_at"] == ""
@@ -531,9 +633,17 @@ def test_jobs_are_listed_filtered_and_sorted(tmp_path, monkeypatch):
     assert acquired["started_at"]
 
 
-def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, monkeypatch):
+def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(
+    tmp_path, monkeypatch
+):
     working, inputs, _store = _workspace(tmp_path)
-    _bind(monkeypatch, working, inputs, PRODUCT_AUTH="1", TOKEN_SECRET="unit-test-secret-for-jobs")
+    _bind(
+        monkeypatch,
+        working,
+        inputs,
+        PRODUCT_AUTH="1",
+        TOKEN_SECRET="unit-test-secret-for-jobs",
+    )
 
     class Rag:
         def __init__(self):
@@ -556,10 +666,18 @@ def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, 
     app.include_router(create_product_shell_routes(Rag(), Docs()))
     client = TestClient(app)
     csrf = {"X-KB-Request": "1"}
-    created = client.post("/api/v1/auth/register", json={"email": "owner@example.com", "password": "correct-horse"}, headers=csrf)
+    created = client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner@example.com", "password": "correct-horse"},
+        headers=csrf,
+    )
     assert created.status_code == 200
     owner = {"Authorization": f"Bearer {created.json()['access_token']}", **csrf}
-    other = client.post("/api/v1/auth/register", json={"email": "other@example.com", "password": "correct-horse"}, headers=csrf)
+    other = client.post(
+        "/api/v1/auth/register",
+        json={"email": "other@example.com", "password": "correct-horse"},
+        headers=csrf,
+    )
     stranger = {"Authorization": f"Bearer {other.json()['access_token']}", **csrf}
     kb = client.post("/api/v1/kb", json={"name": "任务库"}, headers=owner)
     assert kb.status_code == 200
@@ -567,7 +685,9 @@ def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, 
     uploaded = client.post(
         "/api/v1/documents",
         data={"kb_id": kb_id, "chunk_strategy": "one"},
-        files={"file": ("note.txt", "接口立即返回\n\n第二段".encode("utf-8"), "text/plain")},
+        files={
+            "file": ("note.txt", "接口立即返回\n\n第二段".encode("utf-8"), "text/plain")
+        },
         headers=owner,
     )
     assert uploaded.status_code == 200
@@ -579,11 +699,18 @@ def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, 
     hidden = client.get(f"/api/v1/jobs/{body['job_id']}", headers=stranger)
     assert hidden.status_code == 404
     assert client.get("/api/v1/jobs", headers=stranger).json()["total"] == 0
-    assert client.post(f"/api/v1/jobs/{body['job_id']}/cancel", headers=stranger).status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/jobs/{body['job_id']}/cancel", headers=stranger
+        ).status_code
+        == 404
+    )
     visible = client.get(f"/api/v1/jobs/{body['job_id']}", headers=owner)
     assert visible.status_code == 200
     assert visible.json()["status"] == "queued"
-    listed = client.get("/api/v1/jobs", params={"kb_id": kb_id, "status": "queued"}, headers=owner)
+    listed = client.get(
+        "/api/v1/jobs", params={"kb_id": kb_id, "status": "queued"}, headers=owner
+    )
     assert listed.json()["total"] == 1
     stop = threading.Event()
     thread = _drive(SqliteStore(working / "product_jobs.sqlite"), "api-worker", stop)
@@ -597,11 +724,15 @@ def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, 
     stop.set()
     thread.join(5)
     assert final["status"] == "succeeded"
-    docs = client.get("/api/v1/documents", params={"kb_id": kb_id}, headers=owner).json()
+    docs = client.get(
+        "/api/v1/documents", params={"kb_id": kb_id}, headers=owner
+    ).json()
     match = next(item for item in docs["items"] if item["id"] == body["doc_id"])
     assert match["status"] == "ready"
     assert match["progress"] == 100
-    page = (ROOT / "product_webui" / "src" / "pages" / "Documents" / "index.tsx").read_text(encoding="utf-8")
+    page = (
+        ROOT / "product_webui" / "src" / "pages" / "Documents" / "index.tsx"
+    ).read_text(encoding="utf-8")
     assert "jobApi.retry" in page
     assert "consistency_failed" in page
     assert "失败" in page
