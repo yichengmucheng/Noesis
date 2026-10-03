@@ -75,21 +75,25 @@ def import_pending_purges(working: Path, store: Any | None = None) -> int:
         if not owner or not kb_id or not job.get("job_id"):
             continue
         before = store.get_job(str(job["job_id"]))
-        store.create_job({
-            "job_id": job["job_id"],
-            "job_type": "purge",
-            "user_id": owner,
-            "kb_id": kb_id,
-            "doc_id": "",
-            "idempotency_key": f"purge:{kb_id}:{job['job_id']}",
-            "input_snapshot": {"kb_id": kb_id},
-        })
+        store.create_job(
+            {
+                "job_id": job["job_id"],
+                "job_type": "purge",
+                "user_id": owner,
+                "kb_id": kb_id,
+                "doc_id": "",
+                "idempotency_key": f"purge:{kb_id}:{job['job_id']}",
+                "input_snapshot": {"kb_id": kb_id},
+            }
+        )
         if before is None:
             imported += 1
     return imported
 
 
-def process_job(store: Any, job: dict[str, Any], working: Path, inputs: Path, stop: threading.Event) -> None:
+def process_job(
+    store: Any, job: dict[str, Any], working: Path, inputs: Path, stop: threading.Event
+) -> None:
     guard = _Guard(store, job["job_id"], str(job.get("worker_id") or ""), stop)
     guard.start()
     try:
@@ -111,7 +115,12 @@ def process_job(store: Any, job: dict[str, Any], working: Path, inputs: Path, st
             store.release(job["job_id"], str(job.get("worker_id") or ""))
 
 
-def worker_loop(store: Any, worker_id: str, stop: threading.Event, job_types: list[str] | None = None) -> None:
+def worker_loop(
+    store: Any,
+    worker_id: str,
+    stop: threading.Event,
+    job_types: list[str] | None = None,
+) -> None:
     working, inputs = _dirs()
     settings = job_settings()
     handled = 0
@@ -135,8 +144,12 @@ def serve(job_types: list[str] | None = None) -> None:
     if profile_blocked:
         raise SystemExit(profile_blocked)
     blocked = production_database_error()
-    if os.getenv("APP_ENV", "").strip().lower() == "production" and not os.getenv("DATABASE_URL", "").strip().startswith("postgres"):
-        raise SystemExit(blocked or "生产环境的 Worker 必须配置 PostgreSQL DATABASE_URL")
+    if os.getenv("APP_ENV", "").strip().lower() == "production" and not os.getenv(
+        "DATABASE_URL", ""
+    ).strip().startswith("postgres"):
+        raise SystemExit(
+            blocked or "生产环境的 Worker 必须配置 PostgreSQL DATABASE_URL"
+        )
     store = open_store()
     store.migrate()
     working, _inputs = _dirs()

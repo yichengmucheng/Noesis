@@ -16,7 +16,9 @@ def _pdf(text: str) -> bytes:
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-        f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"endstream",
+        f"<< /Length {len(stream)} >>\nstream\n".encode("ascii")
+        + stream
+        + b"endstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
     header = b"%PDF-1.4\n"
@@ -33,12 +35,18 @@ def _pdf(text: str) -> bytes:
 
 
 def test_markdown_txt_and_citations_keep_location(tmp_path):
-    markdown = parse_bytes("手册.md", "冷却系统\n\n# 冷却系统\n\n节温器打不开\n".encode("utf-8"), document_id="doc-1")
+    markdown = parse_bytes(
+        "手册.md",
+        "冷却系统\n\n# 冷却系统\n\n节温器打不开\n".encode("utf-8"),
+        document_id="doc-1",
+    )
     text_unit = next(unit for unit in markdown.walk() if unit.content == "节温器打不开")
     assert text_unit.section_path == ["冷却系统"]
     assert text_unit.bbox is None
 
-    note = parse_bytes("note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-2")
+    note = parse_bytes(
+        "note.txt", "第一段\n\n第二段".encode("utf-8"), document_id="doc-2"
+    )
     chunks = chunks_from_document(note, "user-a", "kb-a", "doc-2")
     assert [item["content"] for item in chunks] == ["第一段", "第二段"]
     assert chunks[0]["chunk_id"] == "doc-2-c0001"
@@ -47,20 +55,29 @@ def test_markdown_txt_and_citations_keep_location(tmp_path):
     assert chunks[0]["evidence_ids"]
     assert chunks[0]["evidence_refs"][0]["unit_id"] == "t0001"
 
-    cited = citations_of([{
-        "doc_name": "手册.md",
-        "chunk_id": "doc-1-c0001",
-        "content": "节温器打不开",
-        "page_number": 3,
-        "section_path": ["冷却系统"],
-        "unit_id": "s1",
-        "document_id": "doc-1",
-        "version_id": "ver-1",
-    }])
+    cited = citations_of(
+        [
+            {
+                "doc_name": "手册.md",
+                "chunk_id": "doc-1-c0001",
+                "content": "节温器打不开",
+                "page_number": 3,
+                "section_path": ["冷却系统"],
+                "unit_id": "s1",
+                "document_id": "doc-1",
+                "version_id": "ver-1",
+            }
+        ]
+    )
     assert cited[0]["page_num"] == 3
     assert cited[0]["section_path"] == ["冷却系统"]
     assert cited[0]["unit_id"] == "s1"
-    assert citations_of([{"doc_name": "旧文件", "chunk_id": "legacy", "content": "没有位置"}])[0]["page_num"] is None
+    assert (
+        citations_of(
+            [{"doc_name": "旧文件", "chunk_id": "legacy", "content": "没有位置"}]
+        )[0]["page_num"]
+        is None
+    )
 
     same = "节温器打不开".encode("utf-8")
     first = parse_bytes("a.md", same, document_id="doc-a")
@@ -103,7 +120,12 @@ def test_pdf_page_docx_section_pptx_slide_and_xlsx_cell():
     pptx = pytest.importorskip("pptx")
     presentation = pptx.Presentation()
     slide = presentation.slides.add_slide(presentation.slide_layouts[5])
-    box = slide.shapes.add_textbox(pptx.util.Inches(1), pptx.util.Inches(1), pptx.util.Inches(4), pptx.util.Inches(1))
+    box = slide.shapes.add_textbox(
+        pptx.util.Inches(1),
+        pptx.util.Inches(1),
+        pptx.util.Inches(4),
+        pptx.util.Inches(1),
+    )
     box.text_frame.text = "振动偏大"
     buffer = io.BytesIO()
     presentation.save(buffer)
@@ -131,13 +153,22 @@ def test_pdf_page_docx_section_pptx_slide_and_xlsx_cell():
     buffer = io.BytesIO()
     book.save(buffer)
     table_doc = parse_bytes("list.xlsx", buffer.getvalue(), document_id="doc-xls")
-    excel_chunks = chunks_from_document(table_doc, "user-a", "kb-a", "doc-xls", chunk_size=512, chunk_overlap=0)
+    excel_chunks = chunks_from_document(
+        table_doc, "user-a", "kb-a", "doc-xls", chunk_size=512, chunk_overlap=0
+    )
     assert len(excel_chunks) == 1
-    assert "节温器" in excel_chunks[0]["content"] and "打不开" in excel_chunks[0]["content"]
+    assert (
+        "节温器" in excel_chunks[0]["content"]
+        and "打不开" in excel_chunks[0]["content"]
+    )
     assert len(excel_chunks[0]["evidence_refs"]) >= 2
 
-    long_page = parse_bytes("manual.pdf", _pdf("thermostat " * 80), document_id="doc-pdf-long")
-    page_chunks = chunks_from_document(long_page, "user-a", "kb-a", "doc-pdf-long", chunk_size=8, chunk_overlap=0)
+    long_page = parse_bytes(
+        "manual.pdf", _pdf("thermostat " * 80), document_id="doc-pdf-long"
+    )
+    page_chunks = chunks_from_document(
+        long_page, "user-a", "kb-a", "doc-pdf-long", chunk_size=8, chunk_overlap=0
+    )
     assert len(page_chunks) > 1
     assert {item["page_number"] for item in page_chunks} == {1}
     assert {item["evidence_refs"][0]["unit_id"] for item in page_chunks} == {"p1"}

@@ -68,7 +68,11 @@ def is_cancelled(file_path: str | Path) -> bool:
     for job in rows:
         if job.get("stage") != "cancelled":
             continue
-        if job.get("file_path") == target or job.get("name") == name or job.get("doc_id") == name:
+        if (
+            job.get("file_path") == target
+            or job.get("name") == name
+            or job.get("doc_id") == name
+        ):
             return True
     return False
 

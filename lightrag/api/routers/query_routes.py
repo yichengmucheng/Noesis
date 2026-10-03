@@ -19,6 +19,7 @@ logger = logging.getLogger("lightrag")
 logger.propagate = False  # prevent log message send to root logger
 logger.setLevel(logging.INFO)
 
+
 class QueryRequest(BaseModel):
     query: str = Field(
         min_length=1,

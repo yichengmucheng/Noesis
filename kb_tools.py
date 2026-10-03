@@ -15,6 +15,7 @@
 环境变量：
     KB_SERVER  LightRAG 服务地址，默认 http://127.0.0.1:9621
 """
+
 import argparse
 import asyncio
 import os
@@ -29,8 +30,23 @@ TIMEOUT = httpx.Timeout(600.0, connect=15.0)
 
 # 与后端一致的扩展名白名单（见 document_routes.py / data_loaders）
 TEXT_EXTS = {
-    ".txt", ".md", ".markdown", ".htm", ".html", ".json", ".csv",
-    ".pdf", ".docx", ".pptx", ".xlsx", "", ".log", ".xml", ".yml", ".yaml", ".ini",
+    ".txt",
+    ".md",
+    ".markdown",
+    ".htm",
+    ".html",
+    ".json",
+    ".csv",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    "",
+    ".log",
+    ".xml",
+    ".yml",
+    ".yaml",
+    ".ini",
 }
 
 
@@ -41,7 +57,12 @@ def out(msg: str) -> None:
 
 def client() -> httpx.Client:
     # trust_env=False：绕过系统/注册表代理（如 Clash 7897），强制直连本地服务
-    return httpx.Client(timeout=TIMEOUT, base_url=SERVER, trust_env=False, headers={"accept-language": "zh-CN,zh;q=0.9"})
+    return httpx.Client(
+        timeout=TIMEOUT,
+        base_url=SERVER,
+        trust_env=False,
+        headers={"accept-language": "zh-CN,zh;q=0.9"},
+    )
 
 
 def upload(paths, mode: str = "upload") -> int:
@@ -49,7 +70,15 @@ def upload(paths, mode: str = "upload") -> int:
     for p in paths:
         p = Path(p)
         if p.is_dir():
-            files.extend(sorted(x for x in p.rglob("*") if x.is_file() and x.suffix.lower() in TEXT_EXTS and "__enqueued__" not in x.parts))
+            files.extend(
+                sorted(
+                    x
+                    for x in p.rglob("*")
+                    if x.is_file()
+                    and x.suffix.lower() in TEXT_EXTS
+                    and "__enqueued__" not in x.parts
+                )
+            )
         elif p.is_file():
             files.append(p)
         else:
@@ -62,7 +91,9 @@ def upload(paths, mode: str = "upload") -> int:
     with client() as c:
         for f in files:
             data = f.read_bytes()
-            fn = f.name  # httpx 0.28 要求 filename 为 str；中文文件名由 multipart 传输层自动处理
+            fn = (
+                f.name
+            )  # httpx 0.28 要求 filename 为 str；中文文件名由 multipart 传输层自动处理
             if mode == "upload":
                 resp = c.post(
                     "/documents/upload",
@@ -79,7 +110,9 @@ def upload(paths, mode: str = "upload") -> int:
                 out(f"[上传成功] {f.name} -> {body}")
                 ok += 1
             else:
-                out(f"[上传失败] {f.name} -> HTTP {resp.status_code}: {resp.text[:400]}")
+                out(
+                    f"[上传失败] {f.name} -> HTTP {resp.status_code}: {resp.text[:400]}"
+                )
     out(f"\n共 {len(files)} 个文件，成功 {ok} 个。后台正在解析/切块/抽取/建图。")
     return 0 if ok == len(files) else 2
 
@@ -116,7 +149,9 @@ def show_status() -> dict:
             summary = (d.get("content_summary") or "")[:38].replace("\n", " ")
             err = d.get("error_msg")
             extra = f" 错误: {str(err)[:120]}" if err else ""
-            out(f"  [{s:<10}] {d.get('id', '')[:8]}  {summary}  (chunks={d.get('chunks_count')}){extra}")
+            out(
+                f"  [{s:<10}] {d.get('id', '')[:8]}  {summary}  (chunks={d.get('chunks_count')}){extra}"
+            )
         out(f"\n统计: {stat}  合计: {len(docs)}")
         return stat
 
@@ -142,12 +177,16 @@ async def wait_docs(max_seconds: int = 1800) -> int:
         busy = [d for d in docs if d.get("status") in ("pending", "processing")]
         failed = [d for d in docs if d.get("status") == "failed"]
         done = [d for d in docs if d.get("status") == "processed"]
-        sys.stdout.write(f"\r等待中... processed={len(done)} busy={len(busy)} failed={len(failed)} ({int(time.time()-start)}s)    ")
+        sys.stdout.write(
+            f"\r等待中... processed={len(done)} busy={len(busy)} failed={len(failed)} ({int(time.time()-start)}s)    "
+        )
         sys.stdout.flush()
         if not busy:
             out("")
             for d in failed:
-                out(f"  [失败] {d.get('id','')[:8]} 错误: {str(d.get('error_msg'))[:200]}")
+                out(
+                    f"  [失败] {d.get('id','')[:8]} 错误: {str(d.get('error_msg'))[:200]}"
+                )
             return 0 if not failed else 3
         time.sleep(5)
     out("\n[超时] 仍有文档未处理完成")
@@ -197,12 +236,13 @@ def graph_stats() -> int:
         out(f"  {k}: {v}")
 
     # 边按来源文档分布: edge 上 key d10 是 file_path(旧) —— 改为按 chunk 无关的整体统计
-    by_doc = {}
     ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
     for e in edges:
         for f in e.findall("g:data", ns):
             pass
-    out("(按文档分布可看 WebUI Knowledge Graph 页；`python kb_tools.py status` 看文档状态)")
+    out(
+        "(按文档分布可看 WebUI Knowledge Graph 页；`python kb_tools.py status` 看文档状态)"
+    )
     return 0
 
 
@@ -224,16 +264,24 @@ def delete_docs(prefix: str, delete_file: bool = False) -> int:
     """按 id 前缀删除文档"""
     with client() as c:
         docs = _all_docs(c)
-        matches = [d["id"] for d in docs if d["id"].startswith(prefix) or (d.get("content_summary") or "").startswith(prefix)]
+        matches = [
+            d["id"]
+            for d in docs
+            if d["id"].startswith(prefix)
+            or (d.get("content_summary") or "").startswith(prefix)
+        ]
         if not matches:
             out(f"[未找到] 前缀 {prefix!r} 没有匹配文档")
             return 1
         if matches[0] != prefix and len(matches) > 1:
             out(f"[警告] 前缀匹配到 {len(matches)} 份文档，将全部删除")
         for m in matches:
-            d = dict.fromkeys(("id",), m)
             out(f"  待删: {m}")
-        r = c.request("DELETE", "/documents/delete_document", json={"doc_ids": matches, "delete_file": delete_file})
+        r = c.request(
+            "DELETE",
+            "/documents/delete_document",
+            json={"doc_ids": matches, "delete_file": delete_file},
+        )
         out(f"[删除] HTTP {r.status_code}: {r.text[:160]}")
         return 0 if r.status_code == 200 else 2
 
@@ -244,11 +292,15 @@ def main() -> int:
 
     p = sub.add_parser("upload", help="上传文件/目录并入库")
     p.add_argument("paths", nargs="+")
-    p.add_argument("--raw", action="store_true", help="走 /text 接口（纯文本）而非文件上传")
+    p.add_argument(
+        "--raw", action="store_true", help="走 /text 接口（纯文本）而非文件上传"
+    )
 
     sub.add_parser("scan", help="扫描 inputs 目录")
     sub.add_parser("status", help="查看文档状态")
-    sub.add_parser("wait", help="等待处理完成").add_argument("--timeout", type=int, default=1800)
+    sub.add_parser("wait", help="等待处理完成").add_argument(
+        "--timeout", type=int, default=1800
+    )
 
     p = sub.add_parser("ask", help="问答")
     p.add_argument("question")

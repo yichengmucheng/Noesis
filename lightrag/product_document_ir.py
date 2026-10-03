@@ -24,7 +24,17 @@ UNIT_TYPES = {
     "diagram",
 }
 
-SOURCE_TYPES = {"pdf", "docx", "pptx", "xlsx", "markdown", "txt", "html", "image", "audio"}
+SOURCE_TYPES = {
+    "pdf",
+    "docx",
+    "pptx",
+    "xlsx",
+    "markdown",
+    "txt",
+    "html",
+    "image",
+    "audio",
+}
 
 
 def checksum_of(payload: bytes) -> str:
@@ -119,7 +129,11 @@ class SourceUnit:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "SourceUnit":
-        children = [cls.from_dict(item) for item in raw.get("children") or [] if isinstance(item, dict)]
+        children = [
+            cls.from_dict(item)
+            for item in raw.get("children") or []
+            if isinstance(item, dict)
+        ]
         return cls(
             unit_id=raw.get("unit_id") or "",
             unit_type=raw.get("unit_type") or "",
@@ -243,7 +257,11 @@ class DocumentIR:
         unit = self.find_unit(unit_id)
         if unit is None:
             raise ValueError("引用指向了文档中不存在的单元")
-        digest = hashlib.sha256(f"{self.document_id}\n{self.version_id}\n{chunk_id}\n{unit_id}".encode("utf-8")).hexdigest()[:16]
+        digest = hashlib.sha256(
+            f"{self.document_id}\n{self.version_id}\n{chunk_id}\n{unit_id}".encode(
+                "utf-8"
+            )
+        ).hexdigest()[:16]
         return EvidenceRef(
             evidence_id=f"ev-{digest}",
             document_id=self.document_id,
@@ -281,8 +299,14 @@ class DocumentIR:
             source_name=raw.get("source_name") or "",
             source_type=raw.get("source_type") or "",
             checksum=raw.get("checksum") or "",
-            units=[SourceUnit.from_dict(item) for item in raw.get("units") or [] if isinstance(item, dict)],
-            parse_summary=raw.get("parse_summary") if isinstance(raw.get("parse_summary"), dict) else {},
+            units=[
+                SourceUnit.from_dict(item)
+                for item in raw.get("units") or []
+                if isinstance(item, dict)
+            ],
+            parse_summary=raw.get("parse_summary")
+            if isinstance(raw.get("parse_summary"), dict)
+            else {},
         )
 
     @classmethod
@@ -323,13 +347,19 @@ def public_location(source: dict[str, Any] | None) -> dict[str, Any]:
         "sheet_name": _text(raw.get("sheet_name")),
         "cell_range": _text(raw.get("cell_range")),
         "bbox": raw.get("bbox") if isinstance(raw.get("bbox"), list) else None,
-        "line_start": None if raw.get("line_start") in (None, "") else _optional_int(raw.get("line_start")),
-        "line_end": None if raw.get("line_end") in (None, "") else _optional_int(raw.get("line_end")),
+        "line_start": None
+        if raw.get("line_start") in (None, "")
+        else _optional_int(raw.get("line_start")),
+        "line_end": None
+        if raw.get("line_end") in (None, "")
+        else _optional_int(raw.get("line_end")),
         "excerpt": str(raw.get("excerpt") or ""),
     }
 
 
-def apply_location(row: dict[str, Any], source: dict[str, Any] | None) -> dict[str, Any]:
+def apply_location(
+    row: dict[str, Any], source: dict[str, Any] | None
+) -> dict[str, Any]:
     for key, value in public_location(source).items():
         if value in (None, "", []):
             continue
@@ -338,7 +368,14 @@ def apply_location(row: dict[str, Any], source: dict[str, Any] | None) -> dict[s
     refs = raw.get("evidence_refs")
     if isinstance(refs, list) and refs:
         row["evidence_refs"] = refs
-        row["evidence_ids"] = list(raw.get("evidence_ids") or [item.get("evidence_id") for item in refs if isinstance(item, dict) and item.get("evidence_id")])
+        row["evidence_ids"] = list(
+            raw.get("evidence_ids")
+            or [
+                item.get("evidence_id")
+                for item in refs
+                if isinstance(item, dict) and item.get("evidence_id")
+            ]
+        )
     elif raw.get("evidence_ids"):
         row["evidence_ids"] = list(raw["evidence_ids"])
     return row

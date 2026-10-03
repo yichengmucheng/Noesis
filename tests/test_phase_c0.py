@@ -37,16 +37,47 @@ def test_memory_scope_retrieval_filters_and_budgets(tmp_path):
         embedding=[0.9, 0.1],
         embedding_model="test-model",
     )
-    store.add_memory(owner_id="user-a", content="另一个资料库的秘密", scope="kb", kb_id="kb-b", embedding=[1.0, 0.0], embedding_model="test-model")
-    store.add_memory(owner_id="user-b", content="其他用户的偏好", scope="global", embedding=[1.0, 0.0], embedding_model="test-model")
-    selected = store.retrieve_memories("user-a", "kb-a", "简洁回答 水泵", top_k=5, token_budget=20, embedding=[1.0, 0.0], embedding_model="test-model")
+    store.add_memory(
+        owner_id="user-a",
+        content="另一个资料库的秘密",
+        scope="kb",
+        kb_id="kb-b",
+        embedding=[1.0, 0.0],
+        embedding_model="test-model",
+    )
+    store.add_memory(
+        owner_id="user-b",
+        content="其他用户的偏好",
+        scope="global",
+        embedding=[1.0, 0.0],
+        embedding_model="test-model",
+    )
+    selected = store.retrieve_memories(
+        "user-a",
+        "kb-a",
+        "简洁回答 水泵",
+        top_k=5,
+        token_budget=20,
+        embedding=[1.0, 0.0],
+        embedding_model="test-model",
+    )
     assert {item["id"] for item in selected} == {global_memory["id"], kb_memory["id"]}
-    assert all("memory_score" in item and item["scope"] in {"global", "kb"} for item in selected)
+    assert all(
+        "memory_score" in item and item["scope"] in {"global", "kb"}
+        for item in selected
+    )
     assert not any(item["kb_id"] == "kb-b" for item in selected)
-    assert not store.retrieve_memories("user-a", "kb-a", "秘密", embedding=[0.0, 1.0], embedding_model="test-model")
+    assert not store.retrieve_memories(
+        "user-a", "kb-a", "秘密", embedding=[0.0, 1.0], embedding_model="test-model"
+    )
 
     store.update_memory(global_memory["id"], "user-a", enabled=False)
-    assert all(item["id"] != global_memory["id"] for item in store.retrieve_memories("user-a", "kb-a", "简洁", embedding=[1.0, 0.0], embedding_model="test-model"))
+    assert all(
+        item["id"] != global_memory["id"]
+        for item in store.retrieve_memories(
+            "user-a", "kb-a", "简洁", embedding=[1.0, 0.0], embedding_model="test-model"
+        )
+    )
     reset_appdb_cache()
 
 
@@ -91,8 +122,12 @@ def test_memory_migration_and_backup_restore(tmp_path):
 def test_two_process_writers_keep_all_memory_rows(tmp_path):
     working = tmp_path / "concurrent"
     working.mkdir()
-    first = multiprocessing.Process(target=_concurrent_memory_writer, args=(str(working), "writer-a"))
-    second = multiprocessing.Process(target=_concurrent_memory_writer, args=(str(working), "writer-b"))
+    first = multiprocessing.Process(
+        target=_concurrent_memory_writer, args=(str(working), "writer-a")
+    )
+    second = multiprocessing.Process(
+        target=_concurrent_memory_writer, args=(str(working), "writer-b")
+    )
     first.start()
     second.start()
     first.join(30)

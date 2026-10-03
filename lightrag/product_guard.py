@@ -6,7 +6,11 @@
 
 from __future__ import annotations
 
-from lightrag.product_accounts import AccountError, decode_access_token, product_auth_enabled
+from lightrag.product_accounts import (
+    AccountError,
+    decode_access_token,
+    product_auth_enabled,
+)
 
 _PUBLIC_EXACT = {
     "/",
@@ -41,7 +45,9 @@ def _is_public(path: str) -> bool:
 def _is_native_data(path: str) -> bool:
     if path.startswith("/api/") and not path.startswith("/api/v1"):
         return True
-    return any(path == prefix or path.startswith(prefix + "/") for prefix in _NATIVE_PREFIXES)
+    return any(
+        path == prefix or path.startswith(prefix + "/") for prefix in _NATIVE_PREFIXES
+    )
 
 
 def _bearer_user(authorization: str | None) -> str:

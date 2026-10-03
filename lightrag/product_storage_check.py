@@ -33,20 +33,33 @@ def scan(working_dir: Path, kb_id: str = "") -> dict:
         path = working_dir / name
         if _corrupt(path):
             bak = path.with_name(path.name + ".bak")
-            issues.append({
-                "kind": "corrupt_json",
-                "file": name,
-                "repair": "restore_backup" if bak.exists() and not _corrupt(bak) else "",
-            })
+            issues.append(
+                {
+                    "kind": "corrupt_json",
+                    "file": name,
+                    "repair": "restore_backup"
+                    if bak.exists() and not _corrupt(bak)
+                    else "",
+                }
+            )
     quarantined = 0
     chunks = _read_json(working_dir / "kv_store_text_chunks.json") or {}
     if isinstance(chunks, dict):
         for key, row in chunks.items():
             if not isinstance(row, dict):
                 continue
-            if scope_visible(row, kb_id or str(row.get("kb_id") or "unknown"), shell.get("file_bindings"), shell.get("doc_index")):
+            if scope_visible(
+                row,
+                kb_id or str(row.get("kb_id") or "unknown"),
+                shell.get("file_bindings"),
+                shell.get("doc_index"),
+            ):
                 continue
-            if not row.get("kb_id") and not row.get("doc_id") and not row.get("file_path"):
+            if (
+                not row.get("kb_id")
+                and not row.get("doc_id")
+                and not row.get("file_path")
+            ):
                 quarantined += 1
                 issues.append({"kind": "quarantine", "id": str(key), "repair": ""})
     try:
@@ -56,7 +69,12 @@ def scan(working_dir: Path, kb_id: str = "") -> dict:
         expired = 0
     if expired:
         issues.append({"kind": "expired_lease", "count": expired, "repair": "requeue"})
-    return {"working_dir": str(working_dir), "kb_id": kb_id, "issues": issues, "quarantine": quarantined}
+    return {
+        "working_dir": str(working_dir),
+        "kb_id": kb_id,
+        "issues": issues,
+        "quarantine": quarantined,
+    }
 
 
 def repair_safe(working_dir: Path, kb_id: str = "") -> dict:
@@ -84,7 +102,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--repair-safe", action="store_true")
     args = parser.parse_args(argv)
     folder = Path(args.working_dir)
-    report = repair_safe(folder, args.kb_id) if args.repair_safe else scan(folder, args.kb_id)
+    report = (
+        repair_safe(folder, args.kb_id)
+        if args.repair_safe
+        else scan(folder, args.kb_id)
+    )
     print(json.dumps(report, ensure_ascii=False))
 
 

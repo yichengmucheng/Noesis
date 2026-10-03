@@ -33,9 +33,13 @@ def _wait(port: int, proc: subprocess.Popen, log_path: Path) -> None:
     last = ""
     while time.time() < deadline:
         if proc.poll() is not None:
-            raise RuntimeError(log_path.read_text(encoding="utf-8", errors="replace")[-2000:] or last)
+            raise RuntimeError(
+                log_path.read_text(encoding="utf-8", errors="replace")[-2000:] or last
+            )
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=2
+            ) as response:
                 if response.status == 200:
                     return
         except Exception as exc:
@@ -61,40 +65,60 @@ def test_product_navigation_account_jobs_chat(tmp_path):
     env = {
         key: value
         for key, value in os.environ.items()
-        if not any(word in key.upper() for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE"))
+        if not any(
+            word in key.upper()
+            for word in ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE")
+        )
     }
-    env.update({
-        "APP_ENV": "development",
-        "PRODUCT_AUTH": "1",
-        "TOKEN_SECRET": "playwright-ui-secret-32bytes-ok!!",
-        "CORS_ORIGINS": f"http://127.0.0.1:{PORT}",
-        "COOKIE_SECURE": "0",
-        "AUTH_RATE_LIMIT": "1000",
-        "HOST": "127.0.0.1",
-        "PORT": str(PORT),
-        "WORKING_DIR": str(working),
-        "INPUT_DIR": str(inputs),
-        "DATABASE_URL": "",
-        "MAX_UPLOAD_MB": "12",
-        "MAX_FILES_PER_KB": "4",
-        "EMBEDDING_BINDING": "openai",
-        "EMBEDDING_MODEL": "test-embed",
-        "EMBEDDING_DIM": "8",
-        "EMBEDDING_BINDING_HOST": "http://127.0.0.1:9/v1",
-        "LLM_BINDING": "openai",
-        "LLM_MODEL": "test-model",
-        "LLM_BINDING_HOST": "http://127.0.0.1:9/v1",
-        "PYTHONPATH": str(PROJECT),
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "NO_PROXY": "127.0.0.1,localhost",
-    })
+    env.update(
+        {
+            "APP_ENV": "development",
+            "PRODUCT_AUTH": "1",
+            "TOKEN_SECRET": "playwright-ui-secret-32bytes-ok!!",
+            "CORS_ORIGINS": f"http://127.0.0.1:{PORT}",
+            "COOKIE_SECURE": "0",
+            "AUTH_RATE_LIMIT": "1000",
+            "HOST": "127.0.0.1",
+            "PORT": str(PORT),
+            "WORKING_DIR": str(working),
+            "INPUT_DIR": str(inputs),
+            "DATABASE_URL": "",
+            "MAX_UPLOAD_MB": "12",
+            "MAX_FILES_PER_KB": "4",
+            "EMBEDDING_BINDING": "openai",
+            "EMBEDDING_MODEL": "test-embed",
+            "EMBEDDING_DIM": "8",
+            "EMBEDDING_BINDING_HOST": "http://127.0.0.1:9/v1",
+            "LLM_BINDING": "openai",
+            "LLM_MODEL": "test-model",
+            "LLM_BINDING_HOST": "http://127.0.0.1:9/v1",
+            "PYTHONPATH": str(PROJECT),
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "NO_PROXY": "127.0.0.1,localhost",
+        }
+    )
     (root / ".env").write_text(
-        "\n".join(f"{key}={env[key]}" for key in (
-            "APP_ENV", "PRODUCT_AUTH", "TOKEN_SECRET", "CORS_ORIGINS", "COOKIE_SECURE",
-            "WORKING_DIR", "INPUT_DIR", "DATABASE_URL", "MAX_UPLOAD_MB", "MAX_FILES_PER_KB",
-            "EMBEDDING_BINDING", "EMBEDDING_MODEL", "EMBEDDING_DIM", "LLM_BINDING", "LLM_MODEL",
-        )),
+        "\n".join(
+            f"{key}={env[key]}"
+            for key in (
+                "APP_ENV",
+                "PRODUCT_AUTH",
+                "TOKEN_SECRET",
+                "CORS_ORIGINS",
+                "COOKIE_SECURE",
+                "WORKING_DIR",
+                "INPUT_DIR",
+                "DATABASE_URL",
+                "MAX_UPLOAD_MB",
+                "MAX_FILES_PER_KB",
+                "EMBEDDING_BINDING",
+                "EMBEDDING_MODEL",
+                "EMBEDDING_DIM",
+                "LLM_BINDING",
+                "LLM_MODEL",
+            )
+        ),
         encoding="utf-8",
     )
     log_path = root / "server.log"
@@ -119,28 +143,50 @@ def test_product_navigation_account_jobs_chat(tmp_path):
         def documents(route):
             request = route.request
             if request.method == "DELETE":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "job_id": "job-del", "status": "succeeded", "file_name": "笔记.txt",
-                }, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "job_id": "job-del",
+                            "status": "succeeded",
+                            "file_name": "笔记.txt",
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
                 return
-            if request.method == "GET" and "/documents" in request.url and "/status" not in request.url:
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "items": [{
-                        "id": "doc-1",
-                        "name": "笔记.txt",
-                        "chunk_count": 3,
-                        "char_count": 120,
-                        "status": "ready",
-                        "created_at": "2026-01-01T00:00:00+00:00",
-                        "updated_at": "2026-01-02T00:00:00+00:00",
-                        "mime_type": "text/plain",
-                        "file_size": 120,
-                        "unit_count": 2,
-                        "index_status": "ready",
-                        "version_id": "ver-1",
-                    }],
-                    "total": 1,
-                }, ensure_ascii=False))
+            if (
+                request.method == "GET"
+                and "/documents" in request.url
+                and "/status" not in request.url
+            ):
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "id": "doc-1",
+                                    "name": "笔记.txt",
+                                    "chunk_count": 3,
+                                    "char_count": 120,
+                                    "status": "ready",
+                                    "created_at": "2026-01-01T00:00:00+00:00",
+                                    "updated_at": "2026-01-02T00:00:00+00:00",
+                                    "mime_type": "text/plain",
+                                    "file_size": 120,
+                                    "unit_count": 2,
+                                    "index_status": "ready",
+                                    "version_id": "ver-1",
+                                }
+                            ],
+                            "total": 1,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
                 return
             route.fallback()
 
@@ -150,38 +196,72 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 return
             if route.request.method == "POST" and route.request.url.endswith("/cancel"):
                 calls["cancel"] += 1
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"job_id": "j2", "status": "cancelled"}))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"job_id": "j2", "status": "cancelled"}),
+                )
                 return
             if route.request.method == "POST" and route.request.url.endswith("/retry"):
                 calls["retry"] += 1
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"job_id": "j1", "status": "queued"}))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"job_id": "j1", "status": "queued"}),
+                )
                 return
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                "items": [
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
                     {
-                        "job_id": "j1", "file_name": "笔记.txt", "status": "failed", "stage": "embedding",
-                        "error": "嵌入失败：模型没有返回向量", "created_at": "2026-01-01T00:00:00+00:00",
+                        "items": [
+                            {
+                                "job_id": "j1",
+                                "file_name": "笔记.txt",
+                                "status": "failed",
+                                "stage": "embedding",
+                                "error": "嵌入失败：模型没有返回向量",
+                                "created_at": "2026-01-01T00:00:00+00:00",
+                            },
+                            {
+                                "job_id": "j2",
+                                "file_name": "排队.txt",
+                                "status": "running",
+                                "stage": "parsing",
+                                "created_at": "2026-01-01T00:00:00+00:00",
+                            },
+                        ],
+                        "total": 2,
+                        "page": 1,
+                        "page_size": 8,
                     },
-                    {
-                        "job_id": "j2", "file_name": "排队.txt", "status": "running", "stage": "parsing",
-                        "created_at": "2026-01-01T00:00:00+00:00",
-                    },
-                ],
-                "total": 2, "page": 1, "page_size": 8,
-            }, ensure_ascii=False))
+                    ensure_ascii=False,
+                ),
+            )
 
         def checks(route):
             if route.request.url.endswith("/deep-check"):
                 calls["deep"] += 1
             else:
                 calls["check"] += 1
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                "passed": False,
-                "stores": {
-                    "text_chunks": {"count": 1, "samples": ["vdb_chunks.json"]},
-                    "chunks_vdb": {"count": 0, "samples": ["internal-store.json"]},
-                },
-            }, ensure_ascii=False))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "passed": False,
+                        "stores": {
+                            "text_chunks": {"count": 1, "samples": ["vdb_chunks.json"]},
+                            "chunks_vdb": {
+                                "count": 0,
+                                "samples": ["internal-store.json"],
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
         held = []
         bodies = []
@@ -191,7 +271,14 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             method = route.request.method
             path = route.request.url.split("?")[0].rstrip("/")
             if not workspace["items"] and workspace["messages"]:
-                workspace["items"] = [{"id": "conv-1", "title": "新会话", "is_pinned": False, "is_archived": False}]
+                workspace["items"] = [
+                    {
+                        "id": "conv-1",
+                        "title": "新会话",
+                        "is_pinned": False,
+                        "is_archived": False,
+                    }
+                ]
             if method == "POST" and path.endswith("/conversations"):
                 item = {
                     "id": f"conv-{workspace['seq']}",
@@ -201,41 +288,81 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 }
                 workspace["seq"] += 1
                 workspace["items"].insert(0, item)
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(item, ensure_ascii=False),
+                )
                 return
             if method == "GET" and path.endswith("/messages"):
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": workspace["messages"]}, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {"items": workspace["messages"]}, ensure_ascii=False
+                    ),
+                )
                 return
             if method == "POST" and path.endswith("/pin"):
                 conv_id = path.split("/")[-2]
                 for item in workspace["items"]:
                     if item["id"] == conv_id:
                         item["is_pinned"] = not item.get("is_pinned")
-                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps(item, ensure_ascii=False),
+                        )
                         return
             if method == "POST" and path.endswith("/archive"):
                 conv_id = path.split("/")[-2]
                 for item in workspace["items"]:
                     if item["id"] == conv_id:
                         item["is_archived"] = True
-                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps(item, ensure_ascii=False),
+                        )
                         return
             if method == "PATCH":
                 conv_id = path.split("/")[-1]
                 body = json.loads(route.request.post_data or "{}")
                 for item in workspace["items"]:
                     if item["id"] == conv_id:
-                        item.update({key: body[key] for key in ("title", "is_archived") if key in body})
-                        route.fulfill(status=200, content_type="application/json", body=json.dumps(item, ensure_ascii=False))
+                        item.update(
+                            {
+                                key: body[key]
+                                for key in ("title", "is_archived")
+                                if key in body
+                            }
+                        )
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps(item, ensure_ascii=False),
+                        )
                         return
             if method == "DELETE":
                 conv_id = path.split("/")[-1]
-                workspace["items"] = [item for item in workspace["items"] if item["id"] != conv_id]
-                route.fulfill(status=200, content_type="application/json", body='{"ok": true}')
+                workspace["items"] = [
+                    item for item in workspace["items"] if item["id"] != conv_id
+                ]
+                route.fulfill(
+                    status=200, content_type="application/json", body='{"ok": true}'
+                )
                 return
             archived = "archived=true" in route.request.url
-            items = [item for item in workspace["items"] if bool(item.get("is_archived")) == archived]
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": items}, ensure_ascii=False))
+            items = [
+                item
+                for item in workspace["items"]
+                if bool(item.get("is_archived")) == archived
+            ]
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": items}, ensure_ascii=False),
+            )
 
         def chat(route):
             body = json.loads(route.request.post_data or "{}")
@@ -279,7 +406,14 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 }
                 conv = body.get("conversation_id") or "conv-1"
                 if not workspace["items"]:
-                    workspace["items"] = [{"id": conv, "title": "新会话", "is_pinned": False, "is_archived": False}]
+                    workspace["items"] = [
+                        {
+                            "id": conv,
+                            "title": "新会话",
+                            "is_pinned": False,
+                            "is_archived": False,
+                        }
+                    ]
                 unit = "p3"
                 if query == "编号问题":
                     unit = "t1"
@@ -288,151 +422,321 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 if query == "没有资料":
                     citations = []
                 else:
-                    citations = [{
-                        "citation_id": "C1",
-                        "doc_name": "笔记.txt" if query != "失效来源" else "已删.txt",
-                        "document_id": "doc-gone" if query == "失效来源" else "doc-1",
-                        "chunk_id": "c1",
-                        "unit_id": unit,
-                        "excerpt": "命中句子",
-                        "parent_content": "所在章节的补充",
-                        "page_number": 3 if query not in {"编号问题", "无位置", "失效来源"} else None,
-                        "line_start": 4 if query == "编号问题" else None,
-                        "line_end": 4 if query == "编号问题" else None,
-                    }]
+                    citations = [
+                        {
+                            "citation_id": "C1",
+                            "doc_name": "笔记.txt"
+                            if query != "失效来源"
+                            else "已删.txt",
+                            "document_id": "doc-gone"
+                            if query == "失效来源"
+                            else "doc-1",
+                            "chunk_id": "c1",
+                            "unit_id": unit,
+                            "excerpt": "命中句子",
+                            "parent_content": "所在章节的补充",
+                            "page_number": 3
+                            if query not in {"编号问题", "无位置", "失效来源"}
+                            else None,
+                            "line_start": 4 if query == "编号问题" else None,
+                            "line_end": 4 if query == "编号问题" else None,
+                        }
+                    ]
                 workspace["messages"] = [
-                    {"id": "u1", "role": "user", "content": query, "status": "completed"},
-                    {"id": "a1", "role": "assistant", "content": answers.get(query, "答案见 [1]"), "status": "completed", "citations": citations},
+                    {
+                        "id": "u1",
+                        "role": "user",
+                        "content": query,
+                        "status": "completed",
+                    },
+                    {
+                        "id": "a1",
+                        "role": "assistant",
+                        "content": answers.get(query, "答案见 [1]"),
+                        "status": "completed",
+                        "citations": citations,
+                    },
                 ]
             route.fulfill(status=200, content_type="text/event-stream", body=payload)
 
         def source(route):
             if "doc-gone" in route.request.url:
-                route.fulfill(status=404, content_type="application/json", body='{"detail":"来源不存在"}')
+                route.fulfill(
+                    status=404,
+                    content_type="application/json",
+                    body='{"detail":"来源不存在"}',
+                )
                 return
             if "unit_id=none" in route.request.url:
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "doc_name": "旧笔记.txt",
-                    "source_kind": "text",
-                    "unit": {"page_number": None, "slide_number": None, "section_path": [], "line_start": None, "bbox": None},
-                    "matched_chunk": {"excerpt": "旧摘录"},
-                    "parent_context": "",
-                    "source_text": "",
-                    "preview": {"available": False, "kind": "none", "url": None},
-                }, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "doc_name": "旧笔记.txt",
+                            "source_kind": "text",
+                            "unit": {
+                                "page_number": None,
+                                "slide_number": None,
+                                "section_path": [],
+                                "line_start": None,
+                                "bbox": None,
+                            },
+                            "matched_chunk": {"excerpt": "旧摘录"},
+                            "parent_context": "",
+                            "source_text": "",
+                            "preview": {
+                                "available": False,
+                                "kind": "none",
+                                "url": None,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
                 return
             if "unit_id=t1" in route.request.url:
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "doc_name": "笔记.txt",
-                    "source_kind": "text",
-                    "unit": {"page_number": None, "line_start": 4, "line_end": 4, "section_path": ["冷却系统"]},
-                    "matched_chunk": {"excerpt": "命中句子"},
-                    "parent_context": "所在章节的补充",
-                    "source_text": "命中句子",
-                    "preview": {"available": False, "kind": "text", "url": None},
-                }, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "doc_name": "笔记.txt",
+                            "source_kind": "text",
+                            "unit": {
+                                "page_number": None,
+                                "line_start": 4,
+                                "line_end": 4,
+                                "section_path": ["冷却系统"],
+                            },
+                            "matched_chunk": {"excerpt": "命中句子"},
+                            "parent_context": "所在章节的补充",
+                            "source_text": "命中句子",
+                            "preview": {
+                                "available": False,
+                                "kind": "text",
+                                "url": None,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
                 return
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                "doc_name": "笔记.txt",
-                "source_kind": "text",
-                "unit": {"page_number": 3, "slide_number": None, "section_path": [], "line_start": None, "line_end": None, "bbox": None},
-                "matched_chunk": {"excerpt": "命中句子"},
-                "parent_context": "所在章节的补充",
-                "source_text": "命中句子",
-                "preview": {"available": False, "kind": "text", "url": None},
-            }, ensure_ascii=False))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "doc_name": "笔记.txt",
+                        "source_kind": "text",
+                        "unit": {
+                            "page_number": 3,
+                            "slide_number": None,
+                            "section_path": [],
+                            "line_start": None,
+                            "line_end": None,
+                            "bbox": None,
+                        },
+                        "matched_chunk": {"excerpt": "命中句子"},
+                        "parent_context": "所在章节的补充",
+                        "source_text": "命中句子",
+                        "preview": {"available": False, "kind": "text", "url": None},
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
         def content(route):
             if "doc-gone" in route.request.url:
-                route.fulfill(status=404, content_type="application/json", body='{"detail":"来源不存在"}')
+                route.fulfill(
+                    status=404,
+                    content_type="application/json",
+                    body='{"detail":"来源不存在"}',
+                )
                 return
             if "unit_id=none" in route.request.url:
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "source_kind": "text",
-                    "text": "旧摘录",
-                    "units": [],
-                    "layout": "original",
-                    "doc_name": "旧笔记.txt",
-                }, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "source_kind": "text",
+                            "text": "旧摘录",
+                            "units": [],
+                            "layout": "original",
+                            "doc_name": "旧笔记.txt",
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
                 return
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                "source_kind": "text",
-                "text": "第一行\n第二行\n第三行\n命中句子\n第五行",
-                "units": [],
-                "layout": "original",
-                "doc_name": "笔记.txt",
-            }, ensure_ascii=False))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "source_kind": "text",
+                        "text": "第一行\n第二行\n第三行\n命中句子\n第五行",
+                        "units": [],
+                        "layout": "original",
+                        "doc_name": "笔记.txt",
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
         def search(route):
             calls["search"] += 1
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                "status": "ok",
-                "chunks": [{
-                    "chunk_id": "c1",
-                    "excerpt": "诊断摘录",
-                    "doc_name": "笔记.txt",
-                    "channel": "dense",
-                    "channel_rank": 1,
-                    "path_id": "path-1",
-                    "path": "甲到乙",
-                    "parent_id": "parent-1",
-                    "admission_reason": "分数通过",
-                    "admission_score": 0.2,
-                    "score": 0.8,
-                }],
-                "query_plan": {
-                    "route": "rewrite",
-                    "standalone_query": "独立后的问题",
-                    "reason": "问法需要整理",
-                    "variants": ["问法甲"],
-                    "hyde_text": "假设段落",
-                    "subquestions": ["子问题一"],
-                    "llm_used": True,
-                },
-                "retrieval": {
-                    "dense_top": 40, "bm25_top": 30, "graph_top": 2, "rrf": 12,
-                    "rerank_pool": 40, "children": 1, "parents": 1,
-                },
-                "rerank": {"model": "test-rerank", "applied": True, "pool_size": 40},
-                "timings": {"retrieve": 3},
-                "index_version": "rev-1",
-                "embedding_model": "Qwen/Qwen3-Embedding-4B",
-            }, ensure_ascii=False))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "status": "ok",
+                        "chunks": [
+                            {
+                                "chunk_id": "c1",
+                                "excerpt": "诊断摘录",
+                                "doc_name": "笔记.txt",
+                                "channel": "dense",
+                                "channel_rank": 1,
+                                "path_id": "path-1",
+                                "path": "甲到乙",
+                                "parent_id": "parent-1",
+                                "admission_reason": "分数通过",
+                                "admission_score": 0.2,
+                                "score": 0.8,
+                            }
+                        ],
+                        "query_plan": {
+                            "route": "rewrite",
+                            "standalone_query": "独立后的问题",
+                            "reason": "问法需要整理",
+                            "variants": ["问法甲"],
+                            "hyde_text": "假设段落",
+                            "subquestions": ["子问题一"],
+                            "llm_used": True,
+                        },
+                        "retrieval": {
+                            "dense_top": 40,
+                            "bm25_top": 30,
+                            "graph_top": 2,
+                            "rrf": 12,
+                            "rerank_pool": 40,
+                            "children": 1,
+                            "parents": 1,
+                        },
+                        "rerank": {
+                            "model": "test-rerank",
+                            "applied": True,
+                            "pool_size": 40,
+                        },
+                        "timings": {"retrieve": 3},
+                        "index_version": "rev-1",
+                        "embedding_model": "Qwen/Qwen3-Embedding-4B",
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
         voice_state = {"session": None, "turns": []}
 
         def voice_sessions(route):
             path = route.request.url.split("?")[0].rstrip("/")
             if route.request.method == "POST" and path.endswith("/sessions"):
-                voice_state["session"] = {"id": "voice-1", "kb_id": "kb-1", "goal": "free", "status": "active"}
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(voice_state["session"]))
+                voice_state["session"] = {
+                    "id": "voice-1",
+                    "kb_id": "kb-1",
+                    "goal": "free",
+                    "status": "active",
+                }
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(voice_state["session"]),
+                )
                 return
             if route.request.method == "GET" and path.endswith("/sessions"):
                 session = voice_state["session"]
-                item = {
-                    **session,
-                    "turn_count": len(voice_state["turns"]),
-                    "completed_turn_count": len([turn for turn in voice_state["turns"] if turn.get("answer")]),
-                    "cited_turn_count": len([turn for turn in voice_state["turns"] if turn.get("citations")]),
-                    "first_transcript": voice_state["turns"][0]["transcript"] if voice_state["turns"] else "",
-                } if session else None
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [item] if item else []}, ensure_ascii=False))
+                item = (
+                    {
+                        **session,
+                        "turn_count": len(voice_state["turns"]),
+                        "completed_turn_count": len(
+                            [
+                                turn
+                                for turn in voice_state["turns"]
+                                if turn.get("answer")
+                            ]
+                        ),
+                        "cited_turn_count": len(
+                            [
+                                turn
+                                for turn in voice_state["turns"]
+                                if turn.get("citations")
+                            ]
+                        ),
+                        "first_transcript": voice_state["turns"][0]["transcript"]
+                        if voice_state["turns"]
+                        else "",
+                    }
+                    if session
+                    else None
+                )
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {"items": [item] if item else []}, ensure_ascii=False
+                    ),
+                )
                 return
             if route.request.method == "GET":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({**(voice_state["session"] or {}), "turns": voice_state["turns"]}))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            **(voice_state["session"] or {}),
+                            "turns": voice_state["turns"],
+                        }
+                    ),
+                )
                 return
             route.fallback()
 
         def voice_turn(route):
             path = route.request.url.split("?")[0].rstrip("/")
             if path.endswith("/turn"):
-                turn = {"id": "turn-1", "session_id": "voice-1", "kb_id": "kb-1", "transcript": "请复述重点", "answer": "重点是资料结论 [C1]", "citations": [{"citation_id": "C1", "doc_name": "笔记.txt", "excerpt": "资料结论"}], "memory_refs": []}
+                turn = {
+                    "id": "turn-1",
+                    "session_id": "voice-1",
+                    "kb_id": "kb-1",
+                    "transcript": "请复述重点",
+                    "answer": "重点是资料结论 [C1]",
+                    "citations": [
+                        {
+                            "citation_id": "C1",
+                            "doc_name": "笔记.txt",
+                            "excerpt": "资料结论",
+                        }
+                    ],
+                    "memory_refs": [],
+                }
                 voice_state["turns"].append(turn)
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(turn, ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(turn, ensure_ascii=False),
+                )
                 return
             if path.endswith("/finish"):
                 voice_state["session"]["status"] = "completed"
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(voice_state["session"], ensure_ascii=False))
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(voice_state["session"], ensure_ascii=False),
+                )
                 return
             route.fallback()
 
@@ -464,22 +768,108 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.route(re.compile(r"/api/v1/documents/.+/content"), content)
             page.route(re.compile(r"/api/v1/documents/.+/source"), source)
             page.route(re.compile(r"/api/v1/conversations"), conversations)
-            page.route(re.compile(r"/api/v1/messages/.+/feedback"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
-            page.route(re.compile(r"/api/v1/memory-candidates"), lambda route: (
-                route.fulfill(status=200, content_type="application/json", body=json.dumps(
-                    {"id": "cand-1", "content": "偏好简洁", "category": "preference", "status": "pending"} if route.request.method == "POST" else {"items": [{"id": "cand-1", "content": "偏好简洁", "category": "preference", "status": "pending"}]},
-                    ensure_ascii=False,
-                ))
-            ))
-            page.route(re.compile(r"/api/v1/memory-candidates/.+/accept"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"id": "mem-1", "content": "偏好简洁", "enabled": True}, ensure_ascii=False)))
-            page.route(re.compile(r"/api/v1/memory-candidates/.+/reject"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
-            page.route(re.compile(r"/api/v1/memories$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [{"id": "mem-1", "content": "偏好简洁", "enabled": True, "category": "preference"}]}, ensure_ascii=False)))
-            page.route(re.compile(r"/api/v1/memories/.+"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
-            page.route(re.compile(r"/api/v1/voice/practice/sessions(?:/[^/?]+)?(?:\?.*)?$"), voice_sessions)
-            page.route(re.compile(r"/api/v1/voice/practice/.+/(turn|finish)$"), voice_turn)
-            page.route("**/api/v1/voice/transcribe", lambda route: route.fulfill(status=200, content_type="application/json", body='{"text":"请复述重点"}'))
-            page.route("**/api/v1/voice/speech", lambda route: route.fulfill(status=200, content_type="audio/mpeg", body=b"fake-audio"))
-            page.goto(f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded")
+            page.route(
+                re.compile(r"/api/v1/messages/.+/feedback"),
+                lambda route: route.fulfill(
+                    status=200, content_type="application/json", body='{"ok":true}'
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/memory-candidates"),
+                lambda route: (
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {
+                                "id": "cand-1",
+                                "content": "偏好简洁",
+                                "category": "preference",
+                                "status": "pending",
+                            }
+                            if route.request.method == "POST"
+                            else {
+                                "items": [
+                                    {
+                                        "id": "cand-1",
+                                        "content": "偏好简洁",
+                                        "category": "preference",
+                                        "status": "pending",
+                                    }
+                                ]
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/memory-candidates/.+/accept"),
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {"id": "mem-1", "content": "偏好简洁", "enabled": True},
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/memory-candidates/.+/reject"),
+                lambda route: route.fulfill(
+                    status=200, content_type="application/json", body='{"ok":true}'
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/memories$"),
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "id": "mem-1",
+                                    "content": "偏好简洁",
+                                    "enabled": True,
+                                    "category": "preference",
+                                }
+                            ]
+                        },
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/memories/.+"),
+                lambda route: route.fulfill(
+                    status=200, content_type="application/json", body='{"ok":true}'
+                ),
+            )
+            page.route(
+                re.compile(r"/api/v1/voice/practice/sessions(?:/[^/?]+)?(?:\?.*)?$"),
+                voice_sessions,
+            )
+            page.route(
+                re.compile(r"/api/v1/voice/practice/.+/(turn|finish)$"), voice_turn
+            )
+            page.route(
+                "**/api/v1/voice/transcribe",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body='{"text":"请复述重点"}',
+                ),
+            )
+            page.route(
+                "**/api/v1/voice/speech",
+                lambda route: route.fulfill(
+                    status=200, content_type="audio/mpeg", body=b"fake-audio"
+                ),
+            )
+            page.goto(
+                f"http://127.0.0.1:{PORT}/console/", wait_until="domcontentloaded"
+            )
             page.get_by_test_id("auth-switch").click()
             page.get_by_test_id("email").fill("ui.browser@example.com")
             page.get_by_test_id("password").fill("correct-horse")
@@ -507,14 +897,18 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("voice-finish").click()
             page.get_by_text("练习已保存").wait_for()
             page.set_viewport_size({"width": 390, "height": 844})
-            with page.expect_response(lambda response: "/voice/practice/sessions/voice-1" in response.url) as history_detail:
+            with page.expect_response(
+                lambda response: "/voice/practice/sessions/voice-1" in response.url
+            ) as history_detail:
                 page.get_by_test_id("voice-history-open").click()
             assert history_detail.value.status == 200
             page.get_by_test_id("voice-review-drawer").wait_for()
             page.get_by_text("完整对话").wait_for()
             page.get_by_text("重点是资料结论").last.wait_for()
             page.get_by_text("有来源回答").wait_for()
-            assert page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            assert page.evaluate(
+                "() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"
+            )
             page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.set_viewport_size({"width": 1280, "height": 800})
             page.get_by_test_id("nav-documents").click()
@@ -523,7 +917,10 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("nav-advanced").click()
             page.get_by_test_id("nav-search").wait_for()
             _forbid(page.locator("body").inner_text())
-            assert "12MB" in page.locator("body").inner_text() or page.get_by_text("12MB").count() >= 0
+            assert (
+                "12MB" in page.locator("body").inner_text()
+                or page.get_by_text("12MB").count() >= 0
+            )
             page.get_by_role("button", name="导入文件").click()
             page.get_by_text("不超过 12MB").wait_for()
             page.get_by_role("button", name="取消").click()
@@ -545,8 +942,12 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_text("版本 ver-1").wait_for()
             page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.get_by_role("button", name="删除").click()
-            with page.expect_response(lambda item: item.request.method == "DELETE") as deleted:
-                page.locator(".ant-popconfirm").get_by_role("button", name="确定").click()
+            with page.expect_response(
+                lambda item: item.request.method == "DELETE"
+            ) as deleted:
+                page.locator(".ant-popconfirm").get_by_role(
+                    "button", name="确定"
+                ).click()
             assert deleted.value.status == 200
             page.get_by_test_id("delete-job").wait_for()
             page.get_by_test_id("run-deep-check").click()
@@ -561,7 +962,9 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.reload(wait_until="domcontentloaded")
             page.get_by_test_id("index-mismatch").wait_for()
             page.get_by_text("需要重新构建索引").wait_for()
-            desktop_overflow = page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            desktop_overflow = page.evaluate(
+                "() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"
+            )
             page.screenshot(path=str(desktop), full_page=True)
 
             search_nav = page.get_by_test_id("nav-search")
@@ -638,7 +1041,9 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("citation-mark").last.click()
             page.get_by_test_id("source-reader").wait_for()
             page.get_by_test_id("text-highlight").wait_for()
-            reader_width = page.get_by_test_id("source-reader").evaluate("node => node.getBoundingClientRect().width")
+            reader_width = page.get_by_test_id("source-reader").evaluate(
+                "node => node.getBoundingClientRect().width"
+            )
             assert reader_width >= 320
             page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.set_viewport_size({"width": 1280, "height": 800})
@@ -658,12 +1063,21 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.locator(".ant-drawer-open .ant-drawer-close").click()
 
             page.get_by_role("button", name="回答偏好").click()
-            levels = (("简洁", "concise", "简洁问题"), ("标准", "standard", "标准问题"), ("详细", "detailed", "详细问题"))
+            levels = (
+                ("简洁", "concise", "简洁问题"),
+                ("标准", "standard", "标准问题"),
+                ("详细", "detailed", "详细问题"),
+            )
             for index, (label, value, question) in enumerate(levels):
                 if index:
                     page.get_by_role("button", name="回答偏好").click()
-                with page.expect_response(lambda item: item.request.method == "PUT" and item.url.endswith("/settings")) as saved:
-                    page.locator(".ant-drawer-open").get_by_text(label, exact=True).click()
+                with page.expect_response(
+                    lambda item: item.request.method == "PUT"
+                    and item.url.endswith("/settings")
+                ) as saved:
+                    page.locator(".ant-drawer-open").get_by_text(
+                        label, exact=True
+                    ).click()
                 assert saved.value.ok
                 page.locator(".ant-drawer-open .ant-drawer-close").click()
                 page.locator(".ant-drawer-open").wait_for(state="hidden")
@@ -678,14 +1092,20 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_text("已停止").wait_for()
             if held:
                 try:
-                    held.pop().fulfill(status=200, content_type="text/event-stream", body='data: {"type":"token","text":"晚到"}\n\n')
+                    held.pop().fulfill(
+                        status=200,
+                        content_type="text/event-stream",
+                        body='data: {"type":"token","text":"晚到"}\n\n',
+                    )
                 except Exception:
                     pass
 
             box.fill("没有资料")
             page.get_by_role("button", name="发送").click()
             page.get_by_test_id("chat-no-evidence").wait_for()
-            no_evidence = page.get_by_test_id("chat-no-evidence").locator("xpath=ancestor::div[2]")
+            no_evidence = page.get_by_test_id("chat-no-evidence").locator(
+                "xpath=ancestor::div[2]"
+            )
             assert no_evidence.get_by_test_id("citation-open").count() == 0
             assert "[C" not in page.get_by_test_id("chat-no-evidence").inner_text()
             box.fill("失败问题")
@@ -693,7 +1113,14 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("chat-error").wait_for()
             chat_text = page.locator("body").inner_text()
             _forbid(chat_text)
-            for word in ("QueryPlan", "RRF", "path_id", "rerank_score", "admission_score", "Qwen/Qwen3"):
+            for word in (
+                "QueryPlan",
+                "RRF",
+                "path_id",
+                "rerank_score",
+                "admission_score",
+                "Qwen/Qwen3",
+            ):
                 assert word not in chat_text
 
             page.set_viewport_size({"width": 390, "height": 844})
@@ -709,12 +1136,17 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("nav-advanced").click()
             page.get_by_text("检索测试").last.wait_for()
             page.locator(".ant-drawer-open .ant-drawer-close").click()
-            mobile_overflow = page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            mobile_overflow = page.evaluate(
+                "() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"
+            )
             page.screenshot(path=str(mobile), full_page=True)
 
             page.get_by_test_id("account-open").click()
             page.get_by_test_id("account-email").wait_for()
-            assert "ui.browser@example.com" in page.get_by_test_id("account-email").inner_text()
+            assert (
+                "ui.browser@example.com"
+                in page.get_by_test_id("account-email").inner_text()
+            )
             assert "当前设备" in page.get_by_test_id("session-list").inner_text()
             page.get_by_test_id("session-revoke").click()
             page.wait_for_url("**/login")

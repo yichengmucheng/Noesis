@@ -13,6 +13,7 @@ from typing import Dict, Any
 API_KEY = os.getenv("LIGHTRAG_API_KEY", "")
 BASE_URL = os.getenv("LIGHTRAG_BASE_URL", "http://localhost:9621").rstrip("/")
 
+
 # Unified authentication headers
 def get_auth_headers() -> Dict[str, str]:
     """Use the configured API key or obtain the server's guest JWT."""

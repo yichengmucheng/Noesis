@@ -259,13 +259,17 @@ def lookup_chunk_plan(file_path: str) -> dict[str, Any] | None:
     if resolved in _CHUNK_PLANS:
         return _CHUNK_PLANS[resolved]
     name = Path(key).name
-    matches = [plan for stored, plan in _CHUNK_PLANS.items() if Path(stored).name == name]
+    matches = [
+        plan for stored, plan in _CHUNK_PLANS.items() if Path(stored).name == name
+    ]
     if len(matches) == 1:
         return matches[0]
     return None
 
 
-def _ensure_parents(results: list[dict[str, Any]], window: int = 3) -> list[dict[str, Any]]:
+def _ensure_parents(
+    results: list[dict[str, Any]], window: int = 3
+) -> list[dict[str, Any]]:
     """没有父块时，把相邻小块合成父块。检索仍用小块，回答时回看父块。"""
     if not results or any(item.get("parent_content") for item in results):
         return results
@@ -280,7 +284,9 @@ def _ensure_parents(results: list[dict[str, Any]], window: int = 3) -> list[dict
     return results
 
 
-def _pack_chunk_results(pieces: list[str], tokenizer: "Tokenizer") -> list[dict[str, Any]]:
+def _pack_chunk_results(
+    pieces: list[str], tokenizer: "Tokenizer"
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for chunk in pieces:
         cleaned = (chunk or "").strip()
@@ -533,8 +539,8 @@ def chunking_by_token_size(
     file_path: str,
     tokenizer: Tokenizer,
     content: str,
-    split_by_character: str = None, # 先按分隔符拆分文本再处理 Token 长度
-    split_by_character_only: bool = False, # 仅按分隔符拆分
+    split_by_character: str = None,  # 先按分隔符拆分文本再处理 Token 长度
+    split_by_character_only: bool = False,  # 仅按分隔符拆分
     overlap_token_size: int = 128,
     max_token_size: int = 1024,
     chunk_strategy: str | None = None,
@@ -585,16 +591,16 @@ def chunking_by_token_size(
                 tokenizer,
             )
 
-    results: list[dict[str, Any]] = [] # 初始化分块结果列表
+    results: list[dict[str, Any]] = []  # 初始化分块结果列表
     if file_type == ".pdf" or file_type == ".pptx":
         # 步骤1：标记所有完整表格的结尾位置，不破坏表格
-        table_pattern = re.compile(r'<table>.*?</table>', re.DOTALL)
+        table_pattern = re.compile(r"<table>.*?</table>", re.DOTALL)
         TABLE_END_MARKER = "[[TABLE_END_MARKER]]"
-        marked_content = table_pattern.sub(r'\g<0>' + TABLE_END_MARKER, content)
+        marked_content = table_pattern.sub(r"\g<0>" + TABLE_END_MARKER, content)
 
         # 步骤2：按标记拆分，得到「包含完整表格+开头背景」的分片（自然粘连）
         raw_chunks = marked_content.split(TABLE_END_MARKER)
-        valid_chunks: List[tuple[int, str]] = []  # (当前分片Token数, 分片内容)
+        valid_chunks: list[tuple[int, str]] = []  # (当前分片Token数, 分片内容)
 
         # 处理拆分后的分片：过滤空块+校验表格完整性+记录Token数
         for idx, raw_chunk in enumerate(raw_chunks):
@@ -609,7 +615,7 @@ def chunking_by_token_size(
         # 步骤3：核心逻辑——累加Token数，合并分片（不超max_token_size）
         if max_token_size > 0:
             current_sum = 0
-            current_group: List[str] = []
+            current_group: list[str] = []
 
             for token_len, chunk in valid_chunks:
                 if current_sum + token_len <= max_token_size:
@@ -618,13 +624,17 @@ def chunking_by_token_size(
                 else:
                     # 超上限：合并当前组为一个Chunk
                     if current_group:
-                        merged_content = "\n\n".join(current_group)  # 换行分隔，格式清晰
+                        merged_content = "\n\n".join(
+                            current_group
+                        )  # 换行分隔，格式清晰
                         merged_token_len = len(tokenizer.encode(merged_content))
-                        results.append({
-                            "chunk_order_index": len(results),
-                            "tokens": merged_token_len,
-                            "content": merged_content,
-                        })
+                        results.append(
+                            {
+                                "chunk_order_index": len(results),
+                                "tokens": merged_token_len,
+                                "content": merged_content,
+                            }
+                        )
                     # 初始化新组
                     current_sum = token_len
                     current_group = [chunk]
@@ -633,20 +643,23 @@ def chunking_by_token_size(
             if current_group:
                 merged_content = "\n\n".join(current_group)
                 merged_token_len = len(tokenizer.encode(merged_content))
-                results.append({
-                    "chunk_order_index": len(results),
-                    "tokens": merged_token_len,
-                    "content": merged_content,
-                })
+                results.append(
+                    {
+                        "chunk_order_index": len(results),
+                        "tokens": merged_token_len,
+                        "content": merged_content,
+                    }
+                )
         else:
             for idx, (token_len, chunk) in enumerate(valid_chunks):
-                results.append({
-                    "chunk_order_index": idx,  # 按分片顺序索引
-                    "tokens": token_len,       # 单个分片的Token数
-                    "content": chunk,          # 单个分片内容（完整表格+粘连背景）
-                })
+                results.append(
+                    {
+                        "chunk_order_index": idx,  # 按分片顺序索引
+                        "tokens": token_len,  # 单个分片的Token数
+                        "content": chunk,  # 单个分片内容（完整表格+粘连背景）
+                    }
+                )
 
-    
     elif file_type == ".docx":
         # Word 文档：原生分层切块（标题层级 + 表格原子保护），不依赖 langchain
         results = _hierarchical_markdown_chunks(
@@ -2671,9 +2684,9 @@ async def extract_entities(
         entity_extraction_system_prompt = prompt_pack[
             "entity_extraction_system_prompt"
         ].format(**{**context_base, "input_text": content})
-        entity_extraction_user_prompt = prompt_pack["entity_extraction_user_prompt"].format(
-            **{**context_base, "input_text": content}
-        )
+        entity_extraction_user_prompt = prompt_pack[
+            "entity_extraction_user_prompt"
+        ].format(**{**context_base, "input_text": content})
         # 用于二次补充抽取，提升召回率
         entity_continue_extraction_user_prompt = prompt_pack[
             "entity_continue_extraction_user_prompt"
@@ -2786,36 +2799,49 @@ async def extract_entities(
 
         # --- Debug / Info Log Section: Output all extracted nodes and edges ---
         if maybe_nodes or maybe_edges:
-
             # 打印实体节点信息
             for entity_name, entity_list in maybe_nodes.items():
                 for entity in entity_list:
-                    desc_preview = (entity.get("description") or "").replace("\n", " ")[:200]
-                    log_entity_message = f"[Entity] name={entity_name}, "\
-                        f"type={entity.get('entity_type', 'Unknown')}, "\
-                        f"desc={desc_preview}, "\
+                    desc_preview = (entity.get("description") or "").replace("\n", " ")[
+                        :200
+                    ]
+                    log_entity_message = (
+                        f"[Entity] name={entity_name}, "
+                        f"type={entity.get('entity_type', 'Unknown')}, "
+                        f"desc={desc_preview}, "
                         f"source={entity.get('file_path', file_path)}"
+                    )
                     logger.info(log_entity_message)
                     if pipeline_status is not None:
                         async with pipeline_status_lock:
                             pipeline_status["latest_message"] = log_entity_message
-                            pipeline_status["history_messages"].append(log_entity_message)
+                            pipeline_status["history_messages"].append(
+                                log_entity_message
+                            )
 
             # 打印关系边信息
             for (src, tgt), edge_list in maybe_edges.items():
                 for edge in edge_list:
-                    desc_preview = (edge.get("description") or "").replace("\n", " ")[:200]
-                    log_Relation_message = f"[Relation] src={src}, tgt={tgt}, "\
-                        f"type={edge.get('keywords', 'Unknown')}, "\
+                    desc_preview = (edge.get("description") or "").replace("\n", " ")[
+                        :200
+                    ]
+                    log_Relation_message = (
+                        f"[Relation] src={src}, tgt={tgt}, "
+                        f"type={edge.get('keywords', 'Unknown')}, "
                         f"desc={desc_preview}"
+                    )
                     logger.info(log_Relation_message)
                     if pipeline_status is not None:
                         async with pipeline_status_lock:
                             pipeline_status["latest_message"] = log_Relation_message
-                            pipeline_status["history_messages"].append(log_Relation_message)
+                            pipeline_status["history_messages"].append(
+                                log_Relation_message
+                            )
 
         else:
-            logger.warning(f"[{chunk_key}] No entities or relations extracted from {file_path}")
+            logger.warning(
+                f"[{chunk_key}] No entities or relations extracted from {file_path}"
+            )
 
         # ==================================================
         # 🌟 核心修改：仅保存实体和关系的核心信息（剔除冗余）
@@ -2824,54 +2850,67 @@ async def extract_entities(
             BASE_DIR = Path(__file__).parent
             output_dir = BASE_DIR / "output"
             output_dir.mkdir(exist_ok=True)
-            
+
             # 生成输出文件名
             output_filename = "entity.txt"
             output_path = output_dir / output_filename
-            
+
             logger.info(f"正在写入实体信息到 {output_path}")
-            
+
             with open(output_path, "a", encoding="utf-8") as f:
                 # 仅保留关键追溯信息（便于区分chunk）
-                f.write("="*60 + "\n")
-                f.write(f"【Chunk 核心提取记录】\n")
+                f.write("=" * 60 + "\n")
+                f.write("【Chunk 核心提取记录】\n")
                 f.write(f"时间戳：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Chunk ID：{chunk_key} | 来源文件：{file_path}\n")
                 f.write(f"实体数量：{entities_count} | 关系数量：{relations_count}\n\n")
                 f.write(f"chunk内容：{content}\n\n")
-                
+
                 # 写入实体核心信息（关键修改：label → entity_type，并添加描述）
                 f.write("【实体核心信息】\n")
                 if maybe_nodes:
-                    for idx, (entity_name, entity_list) in enumerate(maybe_nodes.items(), 1):
+                    for idx, (entity_name, entity_list) in enumerate(
+                        maybe_nodes.items(), 1
+                    ):
                         # 取每个实体列表的第一个有效记录
                         entity = entity_list[0]
                         # 真实字段名是 entity_type，替换原 label
                         entity_type = entity.get("entity_type", "Unknown")
                         # 添加实体描述信息
-                        entity_desc = entity.get("description", "无描述").replace("\n", " ").strip()
-                        f.write(f"{idx}. 实体名称：{entity_name} | 实体类型：{entity_type}\n")
+                        entity_desc = (
+                            entity.get("description", "无描述")
+                            .replace("\n", " ")
+                            .strip()
+                        )
+                        f.write(
+                            f"{idx}. 实体名称：{entity_name} | 实体类型：{entity_type}\n"
+                        )
                         f.write(f"   描述：{entity_desc}\n\n")
                 else:
                     f.write("无提取到的实体\n")
                 f.write("\n")
 
-
                 # 写入关系核心信息（关键修改：relation_type → keywords，并添加描述）
                 f.write("【关系核心信息】\n")
                 if maybe_edges:
-                    for idx, ((src_entity, tgt_entity), edge_list) in enumerate(maybe_edges.items(), 1):
+                    for idx, ((src_entity, tgt_entity), edge_list) in enumerate(
+                        maybe_edges.items(), 1
+                    ):
                         # 取每个关系列表的第一个有效记录
                         edge = edge_list[0]
                         # 真实关系类型字段是 keywords（语义为关系类型，如“原因-结果”“责任归属”）
                         relation_type = edge.get("keywords", "Unknown")
                         # 添加关系描述信息
-                        relation_desc = edge.get("description", "无描述").replace("\n", " ").strip()
-                        f.write(f"{idx}. 关系：{src_entity} → {tgt_entity} | 关系类型：{relation_type}\n")
+                        relation_desc = (
+                            edge.get("description", "无描述").replace("\n", " ").strip()
+                        )
+                        f.write(
+                            f"{idx}. 关系：{src_entity} → {tgt_entity} | 关系类型：{relation_type}\n"
+                        )
                         f.write(f"   描述：{relation_desc}\n\n")
                 else:
                     f.write("无提取到的关系\n")
-                f.write("\n" + "-"*60 + "\n\n")
+                f.write("\n" + "-" * 60 + "\n\n")
         except Exception as e:
             logger.error(f"[{chunk_key}] 写入核心实体关系失败：{str(e)}")
 
@@ -3044,7 +3083,7 @@ async def kg_query(
 
     # If raw data is requested, get both context and raw data
     if return_raw_data:
-        logger.info(f"return_raw_data")
+        logger.info("return_raw_data")
         context_result = await _build_query_context(
             query,
             ll_keywords_str,
@@ -3082,7 +3121,7 @@ async def kg_query(
         query_param,
         chunks_vdb,
     )
-    
+
     if query_param.only_need_context and not query_param.only_need_prompt:
         return context if context is not None else PROMPTS["fail_response"]
     if context is None:
@@ -3117,7 +3156,6 @@ async def kg_query(
         stream=query_param.stream,
     )
 
-    
     if isinstance(response, str) and len(response) > len(sys_prompt):
         response = (
             response.replace(sys_prompt, "")
@@ -3596,12 +3634,12 @@ async def _apply_token_truncation(
     max_entity_tokens = getattr(
         query_param,
         "max_entity_tokens",
-        global_config.get("max_entity_tokens", DEFAULT_MAX_ENTITY_TOKENS), #6000
+        global_config.get("max_entity_tokens", DEFAULT_MAX_ENTITY_TOKENS),  # 6000
     )
     max_relation_tokens = getattr(
         query_param,
         "max_relation_tokens",
-        global_config.get("max_relation_tokens", DEFAULT_MAX_RELATION_TOKENS), #8000
+        global_config.get("max_relation_tokens", DEFAULT_MAX_RELATION_TOKENS),  # 8000
     )
 
     final_entities = search_result["final_entities"]
@@ -3813,7 +3851,8 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
-                        "created_at": chunk.get("created_at") or chunk.get("create_time"),
+                        "created_at": chunk.get("created_at")
+                        or chunk.get("create_time"),
                     }
                 )
 
@@ -3828,7 +3867,8 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
-                        "created_at": chunk.get("created_at") or chunk.get("create_time"),
+                        "created_at": chunk.get("created_at")
+                        or chunk.get("create_time"),
                     }
                 )
 
@@ -3843,7 +3883,8 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
-                        "created_at": chunk.get("created_at") or chunk.get("create_time"),
+                        "created_at": chunk.get("created_at")
+                        or chunk.get("create_time"),
                     }
                 )
 
@@ -4177,7 +4218,7 @@ async def _build_query_context(
         chunk_tracking=search_result["chunk_tracking"],
         query_embedding=search_result["query_embedding"],
     )
-   
+
     if (
         not merged_chunks
         and not truncation_result["entities_context"]
@@ -4283,9 +4324,9 @@ async def _get_node_data(
 
     node_datas = [
         {
-            **n, #原始节点的所有属性
+            **n,  # 原始节点的所有属性
             "entity_name": k["entity_name"],
-            "rank": d, #节点的度
+            "rank": d,  # 节点的度
             "created_at": k.get("created_at"),
         }
         for k, n, d in zip(results, node_datas, node_degrees)
@@ -4313,7 +4354,9 @@ async def _find_most_related_edges_from_entities(
     knowledge_graph_inst: BaseGraphStorage,
 ):
     node_names = [dp["entity_name"] for dp in node_datas]
-    batch_edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(node_names) # 返回边，A list of (source_id, target_id) tuples
+    batch_edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(
+        node_names
+    )  # 返回边，A list of (source_id, target_id) tuples
 
     all_edges = []
     seen = set()
@@ -4350,15 +4393,15 @@ async def _find_most_related_edges_from_entities(
                 edge_props["weight"] = 1.0
 
             combined = {
-                "src_tgt": pair, #合并源节点目标节点对
+                "src_tgt": pair,  # 合并源节点目标节点对
                 "rank": edge_degrees_dict.get(pair, 0),
-                **edge_props, #合并边的所有属性
+                **edge_props,  # 合并边的所有属性
             }
             all_edges_data.append(combined)
 
     all_edges_data = sorted(
         all_edges_data, key=lambda x: (x["rank"], x["weight"]), reverse=True
-    ) #根据rank和weight进行降序排序，优先返回连接度高和权重高的边
+    )  # 根据rank和weight进行降序排序，优先返回连接度高和权重高的边
 
     return all_edges_data
 
@@ -4982,7 +5025,7 @@ async def naive_query(
         }
 
         return raw_data
-    
+
     # Build text_units_context from processed chunks
     text_units_context = []
     for i, chunk in enumerate(processed_chunks):

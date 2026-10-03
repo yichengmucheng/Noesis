@@ -164,14 +164,20 @@ def _hit(
     return row
 
 
-def _in_scope(file_in_kb: Callable[..., bool], file_path: str, record: dict[str, Any] | None = None) -> bool:
+def _in_scope(
+    file_in_kb: Callable[..., bool],
+    file_path: str,
+    record: dict[str, Any] | None = None,
+) -> bool:
     try:
         return bool(file_in_kb(file_path, record or {}))
     except TypeError:
         return bool(file_in_kb(file_path))
 
 
-async def _vector_hits(rag, query: str, limit: int, file_in_kb: Callable[..., bool]) -> list[dict[str, Any]]:
+async def _vector_hits(
+    rag, query: str, limit: int, file_in_kb: Callable[..., bool]
+) -> list[dict[str, Any]]:
     rows = await rag.chunks_vdb.query(query, top_k=max(limit * 5, limit))
     hits: list[dict[str, Any]] = []
     for row in rows or []:
@@ -195,7 +201,9 @@ async def _vector_hits(rag, query: str, limit: int, file_in_kb: Callable[..., bo
         # NanoVectorDB 在余弦度量下把 __metrics__ 放进 distance。它是归一化向量的点积，越大越相似，不是距离。
         cosine = row.get("distance")
         try:
-            cosine_value = float(cosine) if cosine is not None and cosine != "" else None
+            cosine_value = (
+                float(cosine) if cosine is not None and cosine != "" else None
+            )
         except (TypeError, ValueError):
             cosine_value = None
         calibrated = None if cosine_value is None else calibrate_cosine(cosine_value)
@@ -222,7 +230,9 @@ async def _vector_hits(rag, query: str, limit: int, file_in_kb: Callable[..., bo
     return hits
 
 
-def _keyword_hits(query: str, chunks: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+def _keyword_hits(
+    query: str, chunks: list[dict[str, Any]], limit: int
+) -> list[dict[str, Any]]:
     documents = [item.get("content") or "" for item in chunks]
     scores = bm25_rank(query, documents)
     paired = sorted(zip(scores, chunks), key=lambda item: item[0], reverse=True)
@@ -252,7 +262,9 @@ def _keyword_hits(query: str, chunks: list[dict[str, Any]], limit: int) -> list[
     return hits
 
 
-def _record_in_kb(record: dict[str, Any] | None, kb_id: str, owner_id: str = "") -> bool:
+def _record_in_kb(
+    record: dict[str, Any] | None, kb_id: str, owner_id: str = ""
+) -> bool:
     from lightrag.product_scope import split_values
 
     if not isinstance(record, dict):
@@ -284,7 +296,9 @@ async def _graph_hits(
     names: dict[str, str] = {}
     seed_cosine: dict[str, float] = {}
     for row in seeds_raw or []:
-        entity_id = str(row.get("entity_id") or row.get("id") or row.get("__id__") or "")
+        entity_id = str(
+            row.get("entity_id") or row.get("id") or row.get("__id__") or ""
+        )
         label = str(row.get("entity_name") or row.get("name") or "")
         if not entity_id:
             continue
@@ -326,7 +340,10 @@ async def _graph_hits(
                     seed_cosine[node_id] = 0.0
                     seeds.append((node_id, 0.8))
                 else:
-                    seeds = [(item_id, max(score, 0.8) if item_id == node_id else score) for item_id, score in seeds]
+                    seeds = [
+                        (item_id, max(score, 0.8) if item_id == node_id else score)
+                        for item_id, score in seeds
+                    ]
     if not seeds:
         return []
 
@@ -346,10 +363,19 @@ async def _graph_hits(
                 other_node = await graph.get_node(other) or {}
                 if other_node and not _record_in_kb(other_node, kb_id, owner_id):
                     continue
-                edge = await graph.get_edge(src, tgt) or await graph.get_edge(tgt, src) or {}
+                edge = (
+                    await graph.get_edge(src, tgt)
+                    or await graph.get_edge(tgt, src)
+                    or {}
+                )
                 if edge and not _record_in_kb(edge, kb_id, owner_id):
                     continue
-                label = str(edge.get("relation_type") or edge.get("keywords") or edge.get("description") or "相关")
+                label = str(
+                    edge.get("relation_type")
+                    or edge.get("keywords")
+                    or edge.get("description")
+                    or "相关"
+                )
                 label = label.split(GRAPH_FIELD_SEP)[0].strip()[:24] or "相关"
                 if other_node.get("name"):
                     names.setdefault(other, str(other_node.get("name")))
@@ -376,12 +402,21 @@ async def _graph_hits(
             continue
         origin = item["path"][0] if item.get("path") else item["name"]
         cosine = seed_cosine.get(origin, seed_cosine.get(item["name"], 0.0))
-        name_hit = 1.0 if any(label and label in query for label in (names.get(origin, ""), names.get(item["name"], ""))) else 0.0
+        name_hit = (
+            1.0
+            if any(
+                label and label in query
+                for label in (names.get(origin, ""), names.get(item["name"], ""))
+            )
+            else 0.0
+        )
         if cosine <= 0 and name_hit <= 0:
             continue
         shown = [names.get(part, part) for part in item["path"]]
         path_text = " → ".join(shown)
-        description = str(node.get("description") or node.get("name") or "").split(GRAPH_FIELD_SEP)[0]
+        description = str(node.get("description") or node.get("name") or "").split(
+            GRAPH_FIELD_SEP
+        )[0]
         etype = node.get("entity_type") or "实体"
         if isinstance(etype, list):
             etype = etype[0] if etype else "实体"
@@ -394,7 +429,9 @@ async def _graph_hits(
                 continue
             if chunk_id in seen_chunks:
                 for existing in hits:
-                    if existing.get("chunk_id") == chunk_id and int(item.get("hop") or 0) > int(existing.get("hop") or 0):
+                    if existing.get("chunk_id") == chunk_id and int(
+                        item.get("hop") or 0
+                    ) > int(existing.get("hop") or 0):
                         existing["hop"] = item["hop"]
                         existing["path"] = path_text
                         existing["path_id"] = path_text
@@ -444,7 +481,9 @@ async def _hyde_text(rag, query: str) -> str:
     return text.strip()[:800]
 
 
-async def _mix_hits(rag, query: str, limit: int, file_in_kb: Callable[..., bool]) -> list[dict[str, Any]]:
+async def _mix_hits(
+    rag, query: str, limit: int, file_in_kb: Callable[..., bool]
+) -> list[dict[str, Any]]:
     param = QueryParam(
         mode="mix",
         top_k=limit,
@@ -552,7 +591,11 @@ async def _mix_hits(rag, query: str, limit: int, file_in_kb: Callable[..., bool]
 
 def _safe_rerank_warning(exc: BaseException) -> str:
     text = str(exc)
-    for name in ("RERANK_BINDING_API_KEY", "EMBEDDING_BINDING_API_KEY", "LLM_BINDING_API_KEY"):
+    for name in (
+        "RERANK_BINDING_API_KEY",
+        "EMBEDDING_BINDING_API_KEY",
+        "LLM_BINDING_API_KEY",
+    ):
         secret = os.getenv(name) or ""
         if len(secret) > 6:
             text = text.replace(secret, "***")
@@ -650,10 +693,16 @@ async def run_search_test(
                 "ratio_applied": False,
                 "similarity_ratio": None,
                 "hyde_text": None,
-                "rerank": {"enabled": bool(enable_rerank), "applied": False, "warning": None},
+                "rerank": {
+                    "enabled": bool(enable_rerank),
+                    "applied": False,
+                    "warning": None,
+                },
                 "query_plan": None,
                 "answer_context": [],
-                **_runtime_fields(Path(working_dir) if working_dir is not None else None),
+                **_runtime_fields(
+                    Path(working_dir) if working_dir is not None else None
+                ),
             }
     if staged:
         return await _run_staged(
@@ -703,7 +752,9 @@ async def run_search_test(
             base = original_by_id.get(item["chunk_id"])
             query_cosine = None if base is None else base.get("vector_score")
             if query_cosine is None:
-                query_cosine = await _query_cosine(rag, query, item.get("content") or "")
+                query_cosine = await _query_cosine(
+                    rag, query, item.get("content") or ""
+                )
                 if query_cosine is not None:
                     query_cosine = calibrate_cosine(query_cosine)
             item["source"] = "tree"
@@ -720,7 +771,11 @@ async def run_search_test(
         hits = await _vector_hits(rag, query, pool, file_in_kb)
         mode = "vector"
     if kb_id or owner_id:
-        hits = [item for item in hits if _record_in_kb(item, kb_id, owner_id) or not item.get("kb_id")]
+        hits = [
+            item
+            for item in hits
+            if _record_in_kb(item, kb_id, owner_id) or not item.get("kb_id")
+        ]
 
     rerank_info = {
         "enabled": bool(enable_rerank),
@@ -816,7 +871,9 @@ async def run_search_test(
     }
 
 
-def _stamp(hits: list[dict[str, Any]], channel: str, variant_id: str) -> list[dict[str, Any]]:
+def _stamp(
+    hits: list[dict[str, Any]], channel: str, variant_id: str
+) -> list[dict[str, Any]]:
     stamped = []
     for rank, hit in enumerate(hits, start=1):
         row = dict(hit)
@@ -935,7 +992,9 @@ async def _run_staged(
         return str(raw or "")
 
     model_caller = llm if getattr(rag, "llm_model_func", None) else None
-    plan = await build_query_plan(query, history=history, llm=model_caller, force=query_force)
+    plan = await build_query_plan(
+        query, history=history, llm=model_caller, force=query_force
+    )
     if not query_force and plan["route"] == "factual" and is_concept(query):
         probe = await _vector_hits(rag, plan["standalone_query"], 5, file_in_kb)
         weak = not any(float(item.get("score") or 0) >= 0.2 for item in probe)
@@ -957,11 +1016,19 @@ async def _run_staged(
     use_graph = mode == "graph" or (mode == "mix" and needs_graph(plan, query))
     if use_dense:
         for index, text in enumerate(recall):
-            rows = _stamp(await _vector_hits(rag, text, DENSE_TOP, file_in_kb), "dense", f"v{index}")
+            rows = _stamp(
+                await _vector_hits(rag, text, DENSE_TOP, file_in_kb),
+                "dense",
+                f"v{index}",
+            )
             if rows:
                 channels[f"dense-{index}"] = rows
         if plan["route"] == "hyde" and plan.get("hyde_text"):
-            rows = _stamp(await _vector_hits(rag, plan["hyde_text"], DENSE_TOP, file_in_kb), "dense", "hyde")
+            rows = _stamp(
+                await _vector_hits(rag, plan["hyde_text"], DENSE_TOP, file_in_kb),
+                "dense",
+                "hyde",
+            )
             if rows:
                 channels["hyde"] = rows
     if use_bm25:
@@ -971,7 +1038,13 @@ async def _run_staged(
                 channels[f"bm25-{index}"] = rows
     graph_hits: list[dict[str, Any]] = []
     if use_graph:
-        graph_hits = _stamp(await _graph_hits(rag, plan["standalone_query"], GRAPH_TOP, file_in_kb, kb_id, owner_id), "graph", "v0")
+        graph_hits = _stamp(
+            await _graph_hits(
+                rag, plan["standalone_query"], GRAPH_TOP, file_in_kb, kb_id, owner_id
+            ),
+            "graph",
+            "v0",
+        )
         if graph_hits:
             channels["graph"] = graph_hits
     text_channels = {key: value for key, value in channels.items() if key != "graph"}
@@ -984,13 +1057,26 @@ async def _run_staged(
                     current = dict(hit)
                     union[hit["chunk_id"]] = current
                 if hit.get("vector_score") is not None:
-                    current["vector_score"] = max(float(current.get("vector_score") or 0), float(hit["vector_score"]))
+                    current["vector_score"] = max(
+                        float(current.get("vector_score") or 0),
+                        float(hit["vector_score"]),
+                    )
                 if hit.get("keyword_score") is not None:
-                    current["keyword_score"] = max(float(current.get("keyword_score") or 0), float(hit["keyword_score"]))
+                    current["keyword_score"] = max(
+                        float(current.get("keyword_score") or 0),
+                        float(hit["keyword_score"]),
+                    )
         blend_rows = list(union.values())
         for row in blend_rows:
-            row["ranking_score"] = float(ratio) * float(row.get("vector_score") or 0) + (1 - float(ratio)) * float(row.get("keyword_score") or 0)
-        blend_rows.sort(key=lambda row: (-float(row.get("ranking_score") or 0), str(row.get("chunk_id") or "")))
+            row["ranking_score"] = float(ratio) * float(
+                row.get("vector_score") or 0
+            ) + (1 - float(ratio)) * float(row.get("keyword_score") or 0)
+        blend_rows.sort(
+            key=lambda row: (
+                -float(row.get("ranking_score") or 0),
+                str(row.get("chunk_id") or ""),
+            )
+        )
         channels["blend"] = _stamp(blend_rows, "blend", "v0")
     merged = rrf_merge(channels, limit=RRF_CAP) if channels else []
     text_merged = rrf_merge(text_channels, limit=RRF_CAP) if text_channels else []
@@ -1020,7 +1106,9 @@ async def _run_staged(
             }
             for bundle in bundles
         ]
-        ordered, rerank_info = await _rerank(query, bundle_rows, top_k, pool_size=RERANK_POOL, rerank_func=rerank_func)
+        ordered, rerank_info = await _rerank(
+            query, bundle_rows, top_k, pool_size=RERANK_POOL, rerank_func=rerank_func
+        )
         by_path = {bundle["path_id"]: bundle for bundle in bundles}
         admitted = []
         for row in ordered:
@@ -1036,7 +1124,13 @@ async def _run_staged(
         hits = expand_admitted_bundles(admitted)
     elif mode == "mix" and use_graph:
         if enable_rerank:
-            text_ranked, rerank_info = await _rerank(query, text_merged, top_k, pool_size=RERANK_POOL, rerank_func=rerank_func)
+            text_ranked, rerank_info = await _rerank(
+                query,
+                text_merged,
+                top_k,
+                pool_size=RERANK_POOL,
+                rerank_func=rerank_func,
+            )
             bundles = path_bundles(graph_hits)
             bundle_rows = [
                 {
@@ -1049,7 +1143,13 @@ async def _run_staged(
                 }
                 for bundle in bundles
             ]
-            ordered, graph_info = await _rerank(query, bundle_rows, top_k, pool_size=min(GRAPH_TOP, RERANK_POOL), rerank_func=rerank_func)
+            ordered, graph_info = await _rerank(
+                query,
+                bundle_rows,
+                top_k,
+                pool_size=min(GRAPH_TOP, RERANK_POOL),
+                rerank_func=rerank_func,
+            )
             if graph_info.get("warning") and not rerank_info.get("warning"):
                 rerank_info["warning"] = graph_info["warning"]
             by_path = {bundle["path_id"]: bundle for bundle in bundles}
@@ -1073,13 +1173,18 @@ async def _run_staged(
         if enable_rerank and graph_rerank == "chunk" and mode == "graph":
             source = graph_hits or merged
         if enable_rerank:
-            hits, rerank_info = await _rerank(query, source, top_k, pool_size=RERANK_POOL, rerank_func=rerank_func)
+            hits, rerank_info = await _rerank(
+                query, source, top_k, pool_size=RERANK_POOL, rerank_func=rerank_func
+            )
         else:
             hits = source
     if mode == "tree":
         for item in hits:
             item["source"] = "tree"
-            if item.get("query_variant_id") == "hyde" or item.get("vector_score") is None:
+            if (
+                item.get("query_variant_id") == "hyde"
+                or item.get("vector_score") is None
+            ):
                 cosine = await _query_cosine(rag, query, item.get("content") or "")
                 if cosine is not None:
                     cosine = calibrate_cosine(cosine)
@@ -1087,10 +1192,18 @@ async def _run_staged(
                 item["raw_score"] = cosine
                 item["keyword_score"] = 0.0
     if kb_id or owner_id:
-        hits = [item for item in hits if _record_in_kb(item, kb_id, owner_id) or not item.get("kb_id")]
+        hits = [
+            item
+            for item in hits
+            if _record_in_kb(item, kb_id, owner_id) or not item.get("kb_id")
+        ]
     fused_mix = mode == "mix" and use_graph
     for item in hits:
-        if item.get("reranked") and item.get("rerank_score") is not None and not fused_mix:
+        if (
+            item.get("reranked")
+            and item.get("rerank_score") is not None
+            and not fused_mix
+        ):
             item["ranking_score"] = float(item["rerank_score"])
         elif item.get("rrf_score") is not None:
             item["ranking_score"] = float(item["rrf_score"])
@@ -1098,7 +1211,12 @@ async def _run_staged(
             item["ranking_score"] = item.get("score")
         if item.get("admission_score") is None:
             annotate_admission(item, mode, ratio)
-    hits.sort(key=lambda item: (-float(item.get("ranking_score") or 0), str(item.get("chunk_id") or "")))
+    hits.sort(
+        key=lambda item: (
+            -float(item.get("ranking_score") or 0),
+            str(item.get("chunk_id") or ""),
+        )
+    )
     hits = filter_by_threshold(hits, score_threshold)
     parents = _kv(Path(working_dir), "parent_chunks") if working_dir is not None else {}
     selected, contexts = aggregate_parents(

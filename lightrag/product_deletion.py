@@ -60,9 +60,21 @@ def consistency_report(
     cache_entries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     bindings = bound_filenames(data, kb_id)
-    qa = [item.get("id") for item in (data.get("qa_pairs") or []) if item.get("kb_id") == kb_id]
-    comparisons = [item.get("task_id") for item in (data.get("comparisons") or []) if item.get("kb_id") == kb_id]
-    cache = [item.get("kb_id") for item in (cache_entries or []) if item.get("kb_id") == kb_id]
+    qa = [
+        item.get("id")
+        for item in (data.get("qa_pairs") or [])
+        if item.get("kb_id") == kb_id
+    ]
+    comparisons = [
+        item.get("task_id")
+        for item in (data.get("comparisons") or [])
+        if item.get("kb_id") == kb_id
+    ]
+    cache = [
+        item.get("kb_id")
+        for item in (cache_entries or [])
+        if item.get("kb_id") == kb_id
+    ]
     return {
         "kb_id": kb_id,
         "bindings": bindings,

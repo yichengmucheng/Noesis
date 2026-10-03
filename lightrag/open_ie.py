@@ -215,13 +215,17 @@ async def retrieve_by_pagerank(
     top_k: int,
 ) -> tuple[list[dict], list[dict]]:
     """向量找到入口短语，PageRank 把图上相连的短语和关系排出来。"""
-    hits = await entities_vdb.query(query, top_k=max(top_k, 10), query_embedding=query_embedding)
+    hits = await entities_vdb.query(
+        query, top_k=max(top_k, 10), query_embedding=query_embedding
+    )
     personalization: dict[str, float] = {}
     for hit in hits:
         name = hit.get("entity_name")
         if not name:
             continue
-        personalization[name] = max(personalization.get(name, 0.0), float(hit.get("distance") or 0.0))
+        personalization[name] = max(
+            personalization.get(name, 0.0), float(hit.get("distance") or 0.0)
+        )
     if not personalization:
         return [], []
 

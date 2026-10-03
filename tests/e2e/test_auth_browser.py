@@ -54,7 +54,9 @@ def _env(root: Path, port: int, auth: str, app_env: str) -> dict[str, str]:
             "LLM_MODEL": "test-model",
             "EMBEDDING_BINDING": "openai",
             "EMBEDDING_BINDING_HOST": "http://127.0.0.1:9/v1",
-            "EMBEDDING_MODEL": "BAAI/bge-m3" if app_env == "production" else "test-embed",
+            "EMBEDDING_MODEL": "BAAI/bge-m3"
+            if app_env == "production"
+            else "test-embed",
             "EMBEDDING_DIM": "8",
             "PYTHONPATH": str(PROJECT),
             "PYTHONUNBUFFERED": "1",
@@ -62,10 +64,22 @@ def _env(root: Path, port: int, auth: str, app_env: str) -> dict[str, str]:
         }
     )
     (root / ".env").write_text(
-        "\n".join(f"{key}={env[key]}" for key in (
-            "APP_ENV", "PRODUCT_AUTH", "TOKEN_SECRET", "CORS_ORIGINS", "COOKIE_SECURE",
-            "WORKING_DIR", "INPUT_DIR", "LLM_BINDING", "LLM_MODEL", "EMBEDDING_BINDING", "EMBEDDING_DIM",
-        )),
+        "\n".join(
+            f"{key}={env[key]}"
+            for key in (
+                "APP_ENV",
+                "PRODUCT_AUTH",
+                "TOKEN_SECRET",
+                "CORS_ORIGINS",
+                "COOKIE_SECURE",
+                "WORKING_DIR",
+                "INPUT_DIR",
+                "LLM_BINDING",
+                "LLM_MODEL",
+                "EMBEDDING_BINDING",
+                "EMBEDDING_DIM",
+            )
+        ),
         encoding="utf-8",
     )
     return env
@@ -105,7 +119,9 @@ def _wait_health(port: int, proc: subprocess.Popen) -> None:
         if proc.poll() is not None:
             raise RuntimeError(_log_tail(proc))
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=2
+            ) as response:
                 if response.status == 200:
                     return
         except Exception as exc:
@@ -200,16 +216,22 @@ def test_register_stores_refresh_only_in_cookie(auth_base):
         _to_register(page)
         page.get_by_label("邮箱").fill(email)
         page.get_by_label("密码").fill("correct-horse")
-        with page.expect_response(lambda item: item.url.endswith("/auth/register") and item.status == 200) as caught:
+        with page.expect_response(
+            lambda item: item.url.endswith("/auth/register") and item.status == 200
+        ) as caught:
             _submit_auth(page)
         body = caught.value.json()
         assert "refresh_token" not in body
         assert body.get("access_token")
         page.get_by_test_id("kb-home").wait_for()
-        cookie = next(item for item in context.cookies() if item["name"] == "kb_refresh")
+        cookie = next(
+            item for item in context.cookies() if item["name"] == "kb_refresh"
+        )
         assert cookie["httpOnly"] is True
         assert cookie["sameSite"] in {"Lax", "lax"}
-        stored = page.evaluate("() => JSON.stringify(localStorage) + JSON.stringify(sessionStorage)")
+        stored = page.evaluate(
+            "() => JSON.stringify(localStorage) + JSON.stringify(sessionStorage)"
+        )
         html = page.content()
         assert "kb-refresh" not in stored
         assert cookie["value"] not in html
@@ -237,7 +259,9 @@ def test_register_errors_do_not_leak_internals(auth_base):
         page.get_by_text("密码至少 8 位，且包含字母").wait_for()
         denied = page.request.post(
             auth_base + "/api/v1/auth/register",
-            data=json.dumps({"email": "other.browser@example.com", "password": "correct-horse"}),
+            data=json.dumps(
+                {"email": "other.browser@example.com", "password": "correct-horse"}
+            ),
             headers={"Content-Type": "application/json"},
         )
         assert denied.status == 403
@@ -266,7 +290,9 @@ def test_login_isolation_reload_and_single_refresh(auth_base):
         page.get_by_label("邮箱").fill(email)
         page.get_by_label("密码").fill("correct-horse")
         _to_register(page)
-        with page.expect_response(lambda item: item.url.endswith("/auth/register")) as caught:
+        with page.expect_response(
+            lambda item: item.url.endswith("/auth/register")
+        ) as caught:
             _submit_auth(page)
         assert caught.value.status == 200
         page.get_by_test_id("kb-home").wait_for()
@@ -284,34 +310,70 @@ def test_login_isolation_reload_and_single_refresh(auth_base):
         other_page.get_by_test_id("kb-home").wait_for()
         assert other_page.get_by_text("A-private").count() == 0
         refreshes = []
-        page.on("request", lambda request: refreshes.append(request.url) if "/auth/refresh" in request.url else None)
+        page.on(
+            "request",
+            lambda request: refreshes.append(request.url)
+            if "/auth/refresh" in request.url
+            else None,
+        )
         page.reload(wait_until="networkidle")
         page.get_by_test_id("kb-home").wait_for()
-        assert page.url.endswith("/console/") or page.url.rstrip("/").endswith("/console")
+        assert page.url.endswith("/console/") or page.url.rstrip("/").endswith(
+            "/console"
+        )
         assert len(refreshes) == 1
         seen = {"kb": 0, "me": 0}
+
         def handle(route):
             url = route.request.url
-            if any(part in url for part in ("/auth/refresh", "/auth/login", "/auth/register", "/auth/status")):
+            if any(
+                part in url
+                for part in (
+                    "/auth/refresh",
+                    "/auth/login",
+                    "/auth/register",
+                    "/auth/status",
+                )
+            ):
                 route.continue_()
                 return
-            key = "me" if url.endswith("/auth/me") or "/auth/me" in url else "kb" if "/api/v1/kb" in url else ""
+            key = (
+                "me"
+                if url.endswith("/auth/me") or "/auth/me" in url
+                else "kb"
+                if "/api/v1/kb" in url
+                else ""
+            )
             if key and seen[key] == 0:
                 seen[key] = 1
-                route.fulfill(status=401, content_type="application/json", body='{"detail":"未登录"}')
+                route.fulfill(
+                    status=401,
+                    content_type="application/json",
+                    body='{"detail":"未登录"}',
+                )
                 return
             route.continue_()
+
         before = len(refreshes)
         page.route("**/api/v1/**", handle)
         page.reload(wait_until="networkidle")
         page.get_by_test_id("kb-home").wait_for()
         assert len(refreshes) - before == 2
         page.unroute("**/api/v1/**")
+
         def reject(route):
-            if "/auth/refresh" in route.request.url or "/api/v1/kb" in route.request.url:
-                route.fulfill(status=401, content_type="application/json", body='{"detail":"未登录"}')
+            if (
+                "/auth/refresh" in route.request.url
+                or "/api/v1/kb" in route.request.url
+            ):
+                route.fulfill(
+                    status=401,
+                    content_type="application/json",
+                    body='{"detail":"未登录"}',
+                )
                 return
             route.continue_()
+
         page.route("**/api/v1/**", reject)
         failure_before = len(refreshes)
         page.reload(wait_until="networkidle")

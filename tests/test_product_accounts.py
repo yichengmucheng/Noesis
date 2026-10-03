@@ -50,7 +50,10 @@ def test_authenticate_rejects_wrong_password_and_disabled_user():
     data = {}
     register_user(data, "ada@example.com", "correct-horse")
     assert authenticate(data, "ada@example.com", "wrong-password") is None
-    assert authenticate(data, "ada@example.com", "correct-horse")["email"] == "ada@example.com"
+    assert (
+        authenticate(data, "ada@example.com", "correct-horse")["email"]
+        == "ada@example.com"
+    )
     data["users"][0]["disabled"] = True
     assert authenticate(data, "ada@example.com", "correct-horse") is None
 

@@ -19,8 +19,20 @@ def _prepare(tmp_path, monkeypatch):
     inputs.mkdir()
     data = load_shell(working)
     data["kbs"] = [
-        {"id": "kb-a", "owner_id": "user-a", "name": "主库", "settings": {}, "graph_config": {}},
-        {"id": "kb-b", "owner_id": "user-a", "name": "副库", "settings": {}, "graph_config": {}},
+        {
+            "id": "kb-a",
+            "owner_id": "user-a",
+            "name": "主库",
+            "settings": {},
+            "graph_config": {},
+        },
+        {
+            "id": "kb-b",
+            "owner_id": "user-a",
+            "name": "副库",
+            "settings": {},
+            "graph_config": {},
+        },
     ]
     save_shell(working, data)
     store = SqliteStore(working / "product_jobs.sqlite")
@@ -36,16 +48,23 @@ def _put(working, inputs, store, kb_id: str, name: str, text: str):
     payload = text.encode("utf-8")
     dest.write_bytes(payload)
     save_shell(working, data)
-    job = store.create_job({
-        "job_type": "ingestion",
-        "user_id": "user-a",
-        "kb_id": kb_id,
-        "doc_id": record["doc_id"],
-        "file_name": name,
-        "file_path": record["storage_key"],
-        "idempotency_key": content_key("user-a", kb_id, payload) + ":" + name,
-        "input_snapshot": {"owner_id": "user-a", "storage_key": record["storage_key"], "chunk_size": 128, "chunk_overlap": 0},
-    })
+    job = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": "user-a",
+            "kb_id": kb_id,
+            "doc_id": record["doc_id"],
+            "file_name": name,
+            "file_path": record["storage_key"],
+            "idempotency_key": content_key("user-a", kb_id, payload) + ":" + name,
+            "input_snapshot": {
+                "owner_id": "user-a",
+                "storage_key": record["storage_key"],
+                "chunk_size": 128,
+                "chunk_overlap": 0,
+            },
+        }
+    )
     done = run_ingestion(store, job, working, inputs, lambda: True)
     assert done["status"] == "succeeded", done
     return record["doc_id"]
@@ -79,7 +98,9 @@ class _GraphAdapter:
         return list(self.graph.edges(node_id))
 
     async def get_all_nodes(self):
-        return [{"id": node_id, **attrs} for node_id, attrs in self.graph.nodes(data=True)]
+        return [
+            {"id": node_id, **attrs} for node_id, attrs in self.graph.nodes(data=True)
+        ]
 
 
 class _Entities:
@@ -143,19 +164,21 @@ def test_two_hop_path_uses_entity_id_and_keeps_other_kb_out(tmp_path, monkeypatc
         record = record or {}
         return "kb-a" in str(record.get("kb_id") or "").split("<SEP>")
 
-    result = asyncio.run(run_search_test(
-        rag,
-        query="光合作用如何为细胞提供能量",
-        mode="graph",
-        top_k=8,
-        ratio=0.5,
-        enable_rerank=False,
-        kb_chunks=list(chunks.values()),
-        file_in_kb=file_in_kb,
-        score_threshold=0.2,
-        kb_id="kb-a",
-        owner_id="user-a",
-    ))
+    result = asyncio.run(
+        run_search_test(
+            rag,
+            query="光合作用如何为细胞提供能量",
+            mode="graph",
+            top_k=8,
+            ratio=0.5,
+            enable_rerank=False,
+            kb_chunks=list(chunks.values()),
+            file_in_kb=file_in_kb,
+            score_threshold=0.2,
+            kb_id="kb-a",
+            owner_id="user-a",
+        )
+    )
     cited = [item for item in result["chunks"] if item.get("unit_id")]
     documents = {item["document_id"] for item in cited}
     pairs = {(item["document_id"], item["unit_id"]) for item in cited}
@@ -165,7 +188,12 @@ def test_two_hop_path_uses_entity_id_and_keeps_other_kb_out(tmp_path, monkeypatc
     assert all(unit for _doc, unit in pairs)
     hops = [item for item in result["chunks"] if int(item.get("hop") or 0) >= 2]
     assert hops
-    assert any("光合作用" in item["path"] and "葡萄糖" in item["path"] and "能量" in item["path"] for item in hops)
+    assert any(
+        "光合作用" in item["path"]
+        and "葡萄糖" in item["path"]
+        and "能量" in item["path"]
+        for item in hops
+    )
     assert all("甜味" not in (item.get("path") or "") for item in result["chunks"])
     assert all(item.get("admission_score") is not None for item in result["chunks"])
     assert all(item.get("kb_id") in {"", "kb-a"} for item in result["chunks"])

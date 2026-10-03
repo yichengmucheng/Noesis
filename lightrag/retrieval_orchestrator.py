@@ -38,10 +38,23 @@ def rerank_document(hit: dict[str, Any]) -> str:
         heading = path
     else:
         heading = " / ".join(str(part) for part in path if str(part).strip())
-    return "\n".join(part for part in (str(hit.get("doc_name") or ""), heading, str(hit.get("content") or "")) if part).strip()[:1800]
+    return "\n".join(
+        part
+        for part in (
+            str(hit.get("doc_name") or ""),
+            heading,
+            str(hit.get("content") or ""),
+        )
+        if part
+    ).strip()[:1800]
 
 
-def rrf_merge(channels: dict[str, list[dict[str, Any]]], *, limit: int = RRF_CAP, id_key: str = "chunk_id") -> list[dict[str, Any]]:
+def rrf_merge(
+    channels: dict[str, list[dict[str, Any]]],
+    *,
+    limit: int = RRF_CAP,
+    id_key: str = "chunk_id",
+) -> list[dict[str, Any]]:
     """按名次融合。不把各渠道的 raw_score 加在一起。"""
     scores: dict[str, float] = {}
     best: dict[str, dict[str, Any]] = {}
@@ -64,7 +77,11 @@ def rrf_merge(channels: dict[str, list[dict[str, Any]]], *, limit: int = RRF_CAP
                     if incoming is None:
                         continue
                     current = row.get(field)
-                    row[field] = float(incoming) if current is None else max(float(current), float(incoming))
+                    row[field] = (
+                        float(incoming)
+                        if current is None
+                        else max(float(current), float(incoming))
+                    )
             row["channels"].append(
                 {
                     "channel": channel,
@@ -74,7 +91,13 @@ def rrf_merge(channels: dict[str, list[dict[str, Any]]], *, limit: int = RRF_CAP
                 }
             )
             row["rrf_score"] = scores[identity]
-    ordered = sorted(best.values(), key=lambda item: (-float(item.get("rrf_score") or 0), str(item.get(id_key) or "")))
+    ordered = sorted(
+        best.values(),
+        key=lambda item: (
+            -float(item.get("rrf_score") or 0),
+            str(item.get(id_key) or ""),
+        ),
+    )
     return ordered[:limit]
 
 
@@ -146,7 +169,9 @@ def expand_admitted_bundles(bundles: list[dict[str, Any]]) -> list[dict[str, Any
     return rows
 
 
-def fuse_ranked_groups(groups: list[list[dict[str, Any]]], *, id_key: str = "chunk_id") -> list[dict[str, Any]]:
+def fuse_ranked_groups(
+    groups: list[list[dict[str, Any]]], *, id_key: str = "chunk_id"
+) -> list[dict[str, Any]]:
     named = {f"group-{index}": rows for index, rows in enumerate(groups) if rows}
     return rrf_merge(named, limit=RRF_CAP, id_key=id_key)
 
@@ -167,7 +192,11 @@ def aggregate_parents(
     parent_order: list[str] = []
     used_tokens = 0
     per_doc: dict[str, int] = {}
-    documents = {str(item.get("document_id") or item.get("doc_id") or "") for item in hits if item.get("document_id") or item.get("doc_id")}
+    documents = {
+        str(item.get("document_id") or item.get("doc_id") or "")
+        for item in hits
+        if item.get("document_id") or item.get("doc_id")
+    }
     for hit in hits:
         parent_id = str(hit.get("parent_id") or "")
         invented = False
@@ -178,7 +207,11 @@ def aggregate_parents(
             if len(parent_order) >= max_parents:
                 continue
             parent = None if invented else parents.get(parent_id)
-            extra = count_tokens(str(parent.get("content") or "")) if parent else count_tokens(str(hit.get("content") or ""))
+            extra = (
+                count_tokens(str(parent.get("content") or ""))
+                if parent
+                else count_tokens(str(hit.get("content") or ""))
+            )
             if parent_order and used_tokens + extra > token_budget:
                 continue
             parent_order.append(parent_id)
@@ -193,7 +226,11 @@ def aggregate_parents(
         selected.append(hit)
     contexts: list[dict[str, Any]] = []
     for parent_id in parent_order:
-        members = [item for item in selected if str(item.get("parent_id") or item.get("chunk_id") or "") == parent_id]
+        members = [
+            item
+            for item in selected
+            if str(item.get("parent_id") or item.get("chunk_id") or "") == parent_id
+        ]
         if not members:
             continue
         parent = parents.get(parent_id)

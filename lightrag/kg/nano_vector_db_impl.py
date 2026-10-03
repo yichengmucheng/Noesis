@@ -122,7 +122,12 @@ class NanoVectorDBStorage(BaseVectorStorage):
                 {
                     "__id__": key,
                     "__created_at__": current_time,
-                    **{field: stamped[field] for field in stamped if field in self.meta_fields or field in {"kb_id", "owner_id", "doc_id", "chunk_id"}},
+                    **{
+                        field: stamped[field]
+                        for field in stamped
+                        if field in self.meta_fields
+                        or field in {"kb_id", "owner_id", "doc_id", "chunk_id"}
+                    },
                 }
             )
         contents = [v["content"] for v in data.values()]

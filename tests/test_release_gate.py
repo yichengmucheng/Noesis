@@ -105,7 +105,12 @@ def test_guard_middleware_blocks_native_routes(monkeypatch):
     assert blocked.status_code == 403
     assert "should-not-leak" not in blocked.text
     assert client.get("/api/v1/kb").status_code == 401
-    assert client.get("/api/v1/kb", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    assert (
+        client.get(
+            "/api/v1/kb", headers={"Authorization": f"Bearer {token}"}
+        ).status_code
+        == 200
+    )
 
 
 def test_missing_scope_is_not_recalled_across_users_or_kbs():
@@ -126,7 +131,10 @@ def test_missing_scope_is_not_recalled_across_users_or_kbs():
     kept_nodes, kept_edges = scoped_graph_records(nodes, edges, "kb-a", bindings)
     assert [item["id"] for item in kept_nodes] == ["甲"]
     assert kept_edges == [edges[2]]
-    assert all("b.txt" not in str(item.get("file_path") or "") for item in kept_nodes + kept_edges)
+    assert all(
+        "b.txt" not in str(item.get("file_path") or "")
+        for item in kept_nodes + kept_edges
+    )
 
 
 def test_delete_keeps_other_kb_file_and_can_retry(tmp_path: Path):
@@ -146,7 +154,14 @@ def test_delete_keeps_other_kb_file_and_can_retry(tmp_path: Path):
     assert "same-name.txt" in protected
     assert "a.txt" not in protected
     job = begin_purge(data, data["kbs"][0])
-    cache = apply_metadata_purge(data, "kb-a", [{"kb_id": "kb-a", "user_id": "user-a"}, {"kb_id": "kb-b", "user_id": "user-a"}])
+    cache = apply_metadata_purge(
+        data,
+        "kb-a",
+        [
+            {"kb_id": "kb-a", "user_id": "user-a"},
+            {"kb_id": "kb-b", "user_id": "user-a"},
+        ],
+    )
     assert data["file_bindings"] == {"same-name.txt": "kb-b"}
     assert cache == [{"kb_id": "kb-b", "user_id": "user-a"}]
     report = consistency_report(data, "kb-a", cache)
@@ -165,7 +180,11 @@ def test_delete_keeps_other_kb_file_and_can_retry(tmp_path: Path):
 def test_owner_migration_is_idempotent(tmp_path: Path):
     folder = tmp_path / "rag"
     folder.mkdir()
-    data = {"kbs": [{"id": "legacy", "owner_id": "local-owner"}], "users": [], "file_bindings": {"a.txt": "legacy"}}
+    data = {
+        "kbs": [{"id": "legacy", "owner_id": "local-owner"}],
+        "users": [],
+        "file_bindings": {"a.txt": "legacy"},
+    }
     register_user(data, "ada@example.com", "correct-horse")
     (folder / "product_shell.json").write_text(json.dumps(data), encoding="utf-8")
     (folder / "semantic_cache.json").write_text(

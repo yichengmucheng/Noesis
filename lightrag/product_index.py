@@ -37,7 +37,11 @@ def current_runtime() -> IndexRuntime:
         if not isinstance(runtime, IndexRuntime):
             raise TypeError("INGEST_RUNTIME 必须返回 IndexRuntime")
         return runtime
-    return IndexRuntime(embed=_configured_embed, llm=_configured_llm, gleaning=int(os.getenv("MAX_GLEANING", "1") or 1))
+    return IndexRuntime(
+        embed=_configured_embed,
+        llm=_configured_llm,
+        gleaning=int(os.getenv("MAX_GLEANING", "1") or 1),
+    )
 
 
 async def embed_texts(texts: list[str]) -> np.ndarray:
@@ -52,7 +56,14 @@ async def embed_texts(texts: list[str]) -> np.ndarray:
     return matrix
 
 
-def write_chunk_vectors(working: Path, doc_id: str, kb_id: str, owner_id: str, chunks: list[dict[str, Any]], matrix: np.ndarray) -> None:
+def write_chunk_vectors(
+    working: Path,
+    doc_id: str,
+    kb_id: str,
+    owner_id: str,
+    chunks: list[dict[str, Any]],
+    matrix: np.ndarray,
+) -> None:
     from lightrag.product_storage import update_vector_store
 
     path = Path(working) / "vdb_chunks.json"
@@ -131,7 +142,9 @@ async def extract_and_store(
             row = rows[0] if rows else {}
             entity_name = str(row.get("entity_name") or name or "").strip()
             source = str(row.get("source_id") or "")
-            if source not in known or not _name_in_text(entity_name, document_text, doc_id):
+            if source not in known or not _name_in_text(
+                entity_name, document_text, doc_id
+            ):
                 continue
             record = entity_record(
                 owner_id,
@@ -148,25 +161,43 @@ async def extract_and_store(
         by_name = {item["name"]: item for item in entities}
         for edge_key, rows in (maybe_edges or {}).items():
             row = rows[0] if rows else {}
-            src_name = str(row.get("src_id") or (edge_key[0] if edge_key else "")).strip()
-            tgt_name = str(row.get("tgt_id") or (edge_key[1] if edge_key else "")).strip()
+            src_name = str(
+                row.get("src_id") or (edge_key[0] if edge_key else "")
+            ).strip()
+            tgt_name = str(
+                row.get("tgt_id") or (edge_key[1] if edge_key else "")
+            ).strip()
             keyword = str(row.get("keywords") or row.get("relation_type") or "").strip()
             description = str(row.get("description") or "").strip()
             source = str(row.get("source_id") or "")
             if source not in known:
                 continue
-            if not _relation_grounded(src_name, tgt_name, keyword, description, document_text, doc_id):
+            if not _relation_grounded(
+                src_name, tgt_name, keyword, description, document_text, doc_id
+            ):
                 continue
             left = by_name.get(src_name)
             right = by_name.get(tgt_name)
             if left is None or right is None or left["entity_id"] == right["entity_id"]:
                 continue
-            relations.append(relation_record(owner_id, kb_id, left["entity_id"], keyword or description, right["entity_id"], source, doc_id))
+            relations.append(
+                relation_record(
+                    owner_id,
+                    kb_id,
+                    left["entity_id"],
+                    keyword or description,
+                    right["entity_id"],
+                    source,
+                    doc_id,
+                )
+            )
     if not entities:
         return
     check_bundle([*chunks, *entities, *relations])
     _write_graph(Path(working), entities, relations)
-    await _write_graph_vectors(Path(working), doc_id, kb_id, owner_id, entities, relations)
+    await _write_graph_vectors(
+        Path(working), doc_id, kb_id, owner_id, entities, relations
+    )
 
 
 def _name_in_text(name: str, document_text: str, doc_id: str) -> bool:
@@ -177,8 +208,12 @@ def _name_in_text(name: str, document_text: str, doc_id: str) -> bool:
     return name in document_text
 
 
-def _relation_grounded(src: str, tgt: str, keyword: str, description: str, document_text: str, doc_id: str) -> bool:
-    if not _name_in_text(src, document_text, doc_id) or not _name_in_text(tgt, document_text, doc_id):
+def _relation_grounded(
+    src: str, tgt: str, keyword: str, description: str, document_text: str, doc_id: str
+) -> bool:
+    if not _name_in_text(src, document_text, doc_id) or not _name_in_text(
+        tgt, document_text, doc_id
+    ):
         return False
     if "导致" in keyword and "导致" not in document_text:
         return False
@@ -199,7 +234,9 @@ def _merge_values(existing: Any, incoming: Any) -> str:
     return GRAPH_FIELD_SEP.join(merged)
 
 
-def _merge_evidence(existing_source: Any, existing_doc: Any, source: str, doc_id: str) -> tuple[str, str]:
+def _merge_evidence(
+    existing_source: Any, existing_doc: Any, source: str, doc_id: str
+) -> tuple[str, str]:
     from lightrag.product_scope import split_values
 
     sources = split_values(existing_source)
@@ -223,13 +260,20 @@ def _merge_vector_rows(db, payload: list[dict[str, Any]]) -> None:
         old = existing.get(str(row.get("__id__")))
         if not old:
             continue
-        source, doc = _merge_evidence(old.get("source_id"), old.get("doc_id"), str(row.get("source_id") or ""), str(row.get("doc_id") or ""))
+        source, doc = _merge_evidence(
+            old.get("source_id"),
+            old.get("doc_id"),
+            str(row.get("source_id") or ""),
+            str(row.get("doc_id") or ""),
+        )
         row["source_id"] = source
         row["doc_id"] = doc
         row["kb_id"] = _merge_values(old.get("kb_id"), row.get("kb_id"))
 
 
-def _write_graph(working: Path, entities: list[dict[str, str]], relations: list[dict[str, str]]) -> None:
+def _write_graph(
+    working: Path, entities: list[dict[str, str]], relations: list[dict[str, str]]
+) -> None:
     from lightrag.product_storage import rewrite_graph
 
     path = working / "graph_chunk_entity_relation.graphml"
@@ -238,19 +282,31 @@ def _write_graph(working: Path, entities: list[dict[str, str]], relations: list[
         for item in entities:
             node_id = item["entity_id"]
             current = dict(graph.nodes[node_id]) if graph.has_node(node_id) else {}
-            source, doc = _merge_evidence(current.get("source_id"), current.get("doc_id"), item["source_id"], item["doc_id"])
+            source, doc = _merge_evidence(
+                current.get("source_id"),
+                current.get("doc_id"),
+                item["source_id"],
+                item["doc_id"],
+            )
             merged = dict(item)
             merged["source_id"] = source
             merged["doc_id"] = doc
             merged["kb_id"] = _merge_values(current.get("kb_id"), item.get("kb_id"))
             if current.get("file_path") or item.get("file_path"):
-                merged["file_path"] = _merge_values(current.get("file_path"), item.get("file_path"))
+                merged["file_path"] = _merge_values(
+                    current.get("file_path"), item.get("file_path")
+                )
             graph.add_node(node_id, **merged)
         for item in relations:
             src = item["src_entity_id"]
             tgt = item["tgt_entity_id"]
             current = dict(graph.edges[src, tgt]) if graph.has_edge(src, tgt) else {}
-            source, doc = _merge_evidence(current.get("source_id"), current.get("doc_id"), item["source_id"], item["doc_id"])
+            source, doc = _merge_evidence(
+                current.get("source_id"),
+                current.get("doc_id"),
+                item["source_id"],
+                item["doc_id"],
+            )
             merged = dict(item)
             merged["source_id"] = source
             merged["doc_id"] = doc
@@ -260,7 +316,9 @@ def _write_graph(working: Path, entities: list[dict[str, str]], relations: list[
     rewrite_graph(path, editor)
 
 
-async def _write_graph_vectors(working, doc_id, kb_id, owner_id, entities, relations) -> None:
+async def _write_graph_vectors(
+    working, doc_id, kb_id, owner_id, entities, relations
+) -> None:
     from lightrag.product_storage import update_vector_store
 
     async def store(path: Path, rows: list[tuple[str, str, dict[str, str]]]) -> None:
@@ -271,7 +329,17 @@ async def _write_graph_vectors(working, doc_id, kb_id, owner_id, entities, relat
         _require_dim(path, dim)
         payload = []
         for (row_id, _text, extra), vector in zip(rows, matrix):
-            payload.append({"__id__": row_id, "__vector__": np.asarray(vector, dtype=np.float32), "doc_id": doc_id, "kb_id": kb_id, "user_id": owner_id, "owner_id": owner_id, **extra})
+            payload.append(
+                {
+                    "__id__": row_id,
+                    "__vector__": np.asarray(vector, dtype=np.float32),
+                    "doc_id": doc_id,
+                    "kb_id": kb_id,
+                    "user_id": owner_id,
+                    "owner_id": owner_id,
+                    **extra,
+                }
+            )
 
         def editor(db) -> None:
             _merge_vector_rows(db, payload)
@@ -281,11 +349,36 @@ async def _write_graph_vectors(working, doc_id, kb_id, owner_id, entities, relat
 
     await store(
         working / "vdb_entities.json",
-        [(item["entity_id"], item["name"], {"entity_id": item["entity_id"], "entity_name": item["name"], "source_id": item["source_id"], "content": item["name"]}) for item in entities],
+        [
+            (
+                item["entity_id"],
+                item["name"],
+                {
+                    "entity_id": item["entity_id"],
+                    "entity_name": item["name"],
+                    "source_id": item["source_id"],
+                    "content": item["name"],
+                },
+            )
+            for item in entities
+        ],
     )
     await store(
         working / "vdb_relationships.json",
-        [(item["relation_id"], item["relation_type"], {"relation_id": item["relation_id"], "src_id": item["src_entity_id"], "tgt_id": item["tgt_entity_id"], "source_id": item["source_id"], "content": item["relation_type"]}) for item in relations],
+        [
+            (
+                item["relation_id"],
+                item["relation_type"],
+                {
+                    "relation_id": item["relation_id"],
+                    "src_id": item["src_entity_id"],
+                    "tgt_id": item["tgt_entity_id"],
+                    "source_id": item["source_id"],
+                    "content": item["relation_type"],
+                },
+            )
+            for item in relations
+        ],
     )
 
 
@@ -320,7 +413,12 @@ async def _configured_embed(texts: list[str]):
     if binding == "ollama":
         from lightrag.llm.ollama import ollama_embed
 
-        return await ollama_embed(texts, embed_model=model or "bge-m3", host=host or "http://localhost:11434", api_key=api_key or None)
+        return await ollama_embed(
+            texts,
+            embed_model=model or "bge-m3",
+            host=host or "http://localhost:11434",
+            api_key=api_key or None,
+        )
     from lightrag.llm.openai import openai_embed
 
     try:
@@ -328,7 +426,11 @@ async def _configured_embed(texts: list[str]):
     except ValueError:
         configured_dimension = 0
     selected_model = model or "text-embedding-3-small"
-    dimensions = configured_dimension if configured_dimension > 0 and "qwen" in selected_model.lower() else None
+    dimensions = (
+        configured_dimension
+        if configured_dimension > 0 and "qwen" in selected_model.lower()
+        else None
+    )
     return await openai_embed(
         texts,
         model=selected_model,

@@ -49,7 +49,15 @@ def _run(tmp_path, monkeypatch, text: str):
     working.mkdir()
     inputs.mkdir()
     data = load_shell(working)
-    data["kbs"] = [{"id": "kb-a", "owner_id": "user-a", "name": "kb-a", "settings": {}, "graph_config": {}}]
+    data["kbs"] = [
+        {
+            "id": "kb-a",
+            "owner_id": "user-a",
+            "name": "kb-a",
+            "settings": {},
+            "graph_config": {},
+        }
+    ]
     save_shell(working, data)
     record = allocate_upload(data, "user-a", "kb-a", "note.txt")
     record["status"] = "queued"
@@ -59,33 +67,52 @@ def _run(tmp_path, monkeypatch, text: str):
     dest.write_bytes(payload)
     save_shell(working, data)
     store = SqliteStore(working / "product_jobs.sqlite")
-    job = store.create_job({
-        "job_type": "ingestion",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": record["doc_id"],
-        "file_name": "note.txt",
-        "file_path": record["storage_key"],
-        "idempotency_key": content_key("user-a", "kb-a", payload),
-        "input_snapshot": {"owner_id": "user-a", "storage_key": record["storage_key"], "chunk_size": 32, "chunk_overlap": 4},
-    })
+    job = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": record["doc_id"],
+            "file_name": "note.txt",
+            "file_path": record["storage_key"],
+            "idempotency_key": content_key("user-a", "kb-a", payload),
+            "input_snapshot": {
+                "owner_id": "user-a",
+                "storage_key": record["storage_key"],
+                "chunk_size": 32,
+                "chunk_overlap": 4,
+            },
+        }
+    )
     done = run_ingestion(store, job, working, inputs, lambda: True)
     return working, record["doc_id"], done
 
 
-def test_upload_uses_configured_embedding_and_text_grounded_graph(tmp_path, monkeypatch):
+def test_upload_uses_configured_embedding_and_text_grounded_graph(
+    tmp_path, monkeypatch
+):
     text = "节温器导致水温升高"
     working, doc_id, done = _run(tmp_path, monkeypatch, text)
     assert done["status"] == "succeeded", done
-    chunks = [row for row in _kv(working, "text_chunks").values() if row.get("doc_id") == doc_id]
-    vectors = [row for row in _vdb_rows(working / "vdb_chunks.json") if row.get("doc_id") == doc_id]
+    chunks = [
+        row
+        for row in _kv(working, "text_chunks").values()
+        if row.get("doc_id") == doc_id
+    ]
+    vectors = [
+        row
+        for row in _vdb_rows(working / "vdb_chunks.json")
+        if row.get("doc_id") == doc_id
+    ]
     assert len(chunks) == len(vectors) == 1
     assert chunks[0]["evidence_ids"]
     import json
     from nano_vectordb.dbs import buffer_string_to_array
 
     raw = json.loads((working / "vdb_chunks.json").read_text(encoding="utf-8"))
-    matrix = buffer_string_to_array(raw["matrix"]).reshape(-1, int(raw["embedding_dim"]))
+    matrix = buffer_string_to_array(raw["matrix"]).reshape(
+        -1, int(raw["embedding_dim"])
+    )
     index = next(i for i, row in enumerate(raw["data"]) if row.get("doc_id") == doc_id)
     assert np.allclose(matrix[index], embed_vector(chunks[0]["index_text"]))
     assert chunks[0]["content"] in chunks[0]["index_text"]
@@ -109,7 +136,10 @@ def test_fixed_cause_relation_is_not_stored_without_text(tmp_path, monkeypatch):
     names = [str(attrs.get("name") or "") for _node, attrs in graph.nodes(data=True)]
     assert names
     assert all(name in text for name in names)
-    assert all(attrs.get("relation_type") != "导致" for _src, _tgt, attrs in graph.edges(data=True))
+    assert all(
+        attrs.get("relation_type") != "导致"
+        for _src, _tgt, attrs in graph.edges(data=True)
+    )
     assert f"{doc_id}-a" not in names and f"{doc_id}-b" not in names
 
 
@@ -120,7 +150,15 @@ def _open(tmp_path, monkeypatch):
     working.mkdir()
     inputs.mkdir()
     data = load_shell(working)
-    data["kbs"] = [{"id": "kb-a", "owner_id": "user-a", "name": "kb-a", "settings": {}, "graph_config": {}}]
+    data["kbs"] = [
+        {
+            "id": "kb-a",
+            "owner_id": "user-a",
+            "name": "kb-a",
+            "settings": {},
+            "graph_config": {},
+        }
+    ]
     save_shell(working, data)
     store = SqliteStore(working / "product_jobs.sqlite")
     return working, inputs, store
@@ -135,21 +173,30 @@ def _put(working, inputs, store, text: str, name: str):
     payload = text.encode("utf-8")
     dest.write_bytes(payload)
     save_shell(working, data)
-    job = store.create_job({
-        "job_type": "ingestion",
-        "user_id": "user-a",
-        "kb_id": "kb-a",
-        "doc_id": record["doc_id"],
-        "file_name": name,
-        "file_path": record["storage_key"],
-        "idempotency_key": content_key("user-a", "kb-a", payload) + ":" + name,
-        "input_snapshot": {"owner_id": "user-a", "storage_key": record["storage_key"], "chunk_size": 32, "chunk_overlap": 4},
-    })
+    job = store.create_job(
+        {
+            "job_type": "ingestion",
+            "user_id": "user-a",
+            "kb_id": "kb-a",
+            "doc_id": record["doc_id"],
+            "file_name": name,
+            "file_path": record["storage_key"],
+            "idempotency_key": content_key("user-a", "kb-a", payload) + ":" + name,
+            "input_snapshot": {
+                "owner_id": "user-a",
+                "storage_key": record["storage_key"],
+                "chunk_size": 32,
+                "chunk_overlap": 4,
+            },
+        }
+    )
     done = run_ingestion(store, job, working, inputs, lambda: True)
     return record["doc_id"], done
 
 
-def test_shared_entity_keeps_other_document_until_last_source_is_gone(tmp_path, monkeypatch):
+def test_shared_entity_keeps_other_document_until_last_source_is_gone(
+    tmp_path, monkeypatch
+):
     text = "节温器导致水温升高"
     working, inputs, store = _open(tmp_path, monkeypatch)
     first, done_first = _put(working, inputs, store, text, "a.txt")
@@ -162,14 +209,23 @@ def test_shared_entity_keeps_other_document_until_last_source_is_gone(tmp_path, 
     graph, _path = _graph(working)
     relations = [attrs for _src, _tgt, attrs in graph.edges(data=True)]
     assert len(relations) == 1
-    assert set(split_values(relations[0]["source_id"])) == {f"{first}-c0001", f"{second}-c0001"}
+    assert set(split_values(relations[0]["source_id"])) == {
+        f"{first}-c0001",
+        f"{second}-c0001",
+    }
     assert set(split_values(relations[0]["doc_id"])) == {first, second}
     entities = _vdb_rows(working / "vdb_entities.json")
     relation_vectors = _vdb_rows(working / "vdb_relationships.json")
     assert len(entities) == 2
     assert len(relation_vectors) == 1
-    assert all(set(split_values(row["source_id"])) == {f"{first}-c0001", f"{second}-c0001"} for row in entities)
-    assert set(split_values(relation_vectors[0]["source_id"])) == {f"{first}-c0001", f"{second}-c0001"}
+    assert all(
+        set(split_values(row["source_id"])) == {f"{first}-c0001", f"{second}-c0001"}
+        for row in entities
+    )
+    assert set(split_values(relation_vectors[0]["source_id"])) == {
+        f"{first}-c0001",
+        f"{second}-c0001",
+    }
 
     data = load_shell(working)
     remove_documents(working, inputs, data, "kb-a", [first])
@@ -186,9 +242,15 @@ def test_shared_entity_keeps_other_document_until_last_source_is_gone(tmp_path, 
     relation_vectors = _vdb_rows(working / "vdb_relationships.json")
     assert len(entities) == 2
     assert len(relation_vectors) == 1
-    assert all(split_values(row["source_id"]) == [f"{second}-c0001"] for row in entities)
+    assert all(
+        split_values(row["source_id"]) == [f"{second}-c0001"] for row in entities
+    )
     assert split_values(relation_vectors[0]["source_id"]) == [f"{second}-c0001"]
-    chunks = [row for row in _vdb_rows(working / "vdb_chunks.json") if row.get("doc_id") == first]
+    chunks = [
+        row
+        for row in _vdb_rows(working / "vdb_chunks.json")
+        if row.get("doc_id") == first
+    ]
     assert chunks == []
 
     data = load_shell(working)
@@ -216,11 +278,15 @@ def test_parallel_vector_and_graph_writes_keep_every_row(tmp_path):
         row_id = f"row-{index}"
 
         def editor(db) -> None:
-            db.upsert([{
-                "__id__": row_id,
-                "__vector__": np.ones(4, dtype=np.float32),
-                "source_id": row_id,
-            }])
+            db.upsert(
+                [
+                    {
+                        "__id__": row_id,
+                        "__vector__": np.ones(4, dtype=np.float32),
+                        "source_id": row_id,
+                    }
+                ]
+            )
 
         try:
             update_vector_store(path, 4, editor)

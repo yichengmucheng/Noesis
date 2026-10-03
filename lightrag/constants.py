@@ -26,20 +26,20 @@ DEFAULT_SUMMARY_CONTEXT_SIZE = 12000
 
 # DEFAULT_ENTITY_TYPES = [ "Person", "Organization", "Location", "Event", "Concept", "Method", "Content", "Data", "Artifact", "NaturalObject", ]
 DEFAULT_ENTITY_TYPES = [
-    "设备",        # Person
-    "部件",        # Organization
-    "故障定义",        # Location
-    "一层原因",        # Event
-    "二层原因",        # Event
-    "三层原因",        # Event
-    "四层原因",        # Event
-    "问题点",        # Event
-    "措施",        # Concept
-    "验证试验",        # Method
-    "文件",        # Content
-    "人员",        # Data
-    "部门",     # NaturalObject
-    "效果",    # NaturalObject
+    "设备",  # Person
+    "部件",  # Organization
+    "故障定义",  # Location
+    "一层原因",  # Event
+    "二层原因",  # Event
+    "三层原因",  # Event
+    "四层原因",  # Event
+    "问题点",  # Event
+    "措施",  # Concept
+    "验证试验",  # Method
+    "文件",  # Content
+    "人员",  # Data
+    "部门",  # NaturalObject
+    "效果",  # NaturalObject
 ]
 
 # Separator for graph fields

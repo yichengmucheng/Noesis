@@ -195,7 +195,11 @@ class JsonKVStorage(BaseKVStorage):
             # Add timestamps to data based on whether key exists
             for k, v in data.items():
                 v.update(stamp_kb(v))
-                if k and not v.get("chunk_id") and self.namespace.endswith("text_chunks"):
+                if (
+                    k
+                    and not v.get("chunk_id")
+                    and self.namespace.endswith("text_chunks")
+                ):
                     v["chunk_id"] = k
                     v.setdefault("doc_id", v.get("full_doc_id") or "")
                 # For text_chunks namespace, ensure llm_cache_list field exists

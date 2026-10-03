@@ -34,7 +34,9 @@ LOCAL_OWNER_ID = "local-owner"
 _DEFAULT_TOKEN_SECRET = "lightrag-jwt-default-secret"
 _ACCESS_SECONDS = 15 * 60
 _REFRESH_DAYS = 7
-CURRENT_USER: ContextVar[dict[str, Any] | None] = ContextVar("product_current_user", default=None)
+CURRENT_USER: ContextVar[dict[str, Any] | None] = ContextVar(
+    "product_current_user", default=None
+)
 WRITE_KB_ID: ContextVar[str] = ContextVar("product_write_kb", default="")
 WRITE_OWNER_ID: ContextVar[str] = ContextVar("product_write_owner", default="")
 WRITE_DOC_ID: ContextVar[str] = ContextVar("product_write_doc", default="")
@@ -127,7 +129,9 @@ def register_user(data: dict[str, Any], email: str, password: str) -> dict[str, 
     return public_user(user)
 
 
-def authenticate(data: dict[str, Any], email: str, password: str) -> dict[str, Any] | None:
+def authenticate(
+    data: dict[str, Any], email: str, password: str
+) -> dict[str, Any] | None:
     normalized = email.strip().lower()
     for user in ensure_users(data):
         if str(user.get("email") or "").lower() != normalized:
@@ -198,8 +202,20 @@ def upload_capability() -> dict[str, Any]:
         "max_files_per_kb": max_files,
         "max_pdf_pages": max(1, max_pages),
         "extensions": [
-            ".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".pptx",
-            ".txt", ".md", ".markdown", ".csv", ".json", ".html", ".htm",
+            ".pdf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".docx",
+            ".xlsx",
+            ".pptx",
+            ".txt",
+            ".md",
+            ".markdown",
+            ".csv",
+            ".json",
+            ".html",
+            ".htm",
         ],
         "embedding_model": os.getenv("EMBEDDING_MODEL") or "",
         "rerank_model": os.getenv("RERANK_MODEL") or "",
@@ -232,7 +248,7 @@ def content_matches_extension(name: str, head: bytes) -> bool:
 
 
 def pdf_page_count(payload: bytes) -> int:
-    return len(re.findall(br"/Type\s*/Page(?!s)", payload))
+    return len(re.findall(rb"/Type\s*/Page(?!s)", payload))
 
 
 def office_package_safe(payload: bytes) -> bool:
@@ -355,7 +371,9 @@ def stamp_kb(payload: dict[str, Any]) -> dict[str, Any]:
     stamped = dict(payload)
     kb_id = WRITE_KB_ID.get()
     if kb_id:
-        parts = [part for part in str(stamped.get("kb_id") or "").split("<SEP>") if part]
+        parts = [
+            part for part in str(stamped.get("kb_id") or "").split("<SEP>") if part
+        ]
         if kb_id not in parts:
             parts.append(kb_id)
         stamped["kb_id"] = "<SEP>".join(parts)
@@ -429,10 +447,16 @@ def decode_access_token(token: str) -> str:
     return str(decode_access_payload(token)["sub"])
 
 
-def access_is_current(data: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+def access_is_current(
+    data: dict[str, Any], payload: dict[str, Any]
+) -> dict[str, Any] | None:
     user_id = str(payload.get("sub") or "")
     user = next(
-        (item for item in ensure_users(data) if item.get("user_id") == user_id and not item.get("disabled")),
+        (
+            item
+            for item in ensure_users(data)
+            if item.get("user_id") == user_id and not item.get("disabled")
+        ),
         None,
     )
     if user is None:
@@ -443,7 +467,11 @@ def access_is_current(data: dict[str, Any], payload: dict[str, Any]) -> dict[str
     if not session_id:
         return None
     for session in _sessions(data):
-        if session.get("session_id") == session_id and session.get("user_id") == user_id and _session_active(session):
+        if (
+            session.get("session_id") == session_id
+            and session.get("user_id") == user_id
+            and _session_active(session)
+        ):
             return user
     return None
 
@@ -468,7 +496,9 @@ def _session_active(session: dict[str, Any]) -> bool:
     return expires > _now()
 
 
-def issue_refresh_token(data: dict[str, Any], user_id: str, device_label: str = "") -> tuple[str, str]:
+def issue_refresh_token(
+    data: dict[str, Any], user_id: str, device_label: str = ""
+) -> tuple[str, str]:
     raw = secrets.token_urlsafe(32)
     session_id = uuid4().hex
     _sessions(data).append(
@@ -503,7 +533,9 @@ def revoke_all_sessions(data: dict[str, Any], user_id: str) -> None:
             session["revoked_at"] = _iso()
 
 
-def rotate_refresh_token(data: dict[str, Any], raw: str) -> tuple[dict[str, Any], str, str]:
+def rotate_refresh_token(
+    data: dict[str, Any], raw: str
+) -> tuple[dict[str, Any], str, str]:
     session = _find_refresh_any(data, raw)
     if session is None:
         raise AccountError("invalid_token", "未登录")
@@ -513,10 +545,14 @@ def rotate_refresh_token(data: dict[str, Any], raw: str) -> tuple[dict[str, Any]
             revoke_all_sessions(data, user_id)
         raise AccountError("invalid_token", "未登录")
     session["revoked_at"] = _iso()
-    user = next((item for item in ensure_users(data) if item.get("user_id") == user_id), None)
+    user = next(
+        (item for item in ensure_users(data) if item.get("user_id") == user_id), None
+    )
     if user is None or user.get("disabled"):
         raise AccountError("invalid_token", "未登录")
-    refresh, session_id = issue_refresh_token(data, user_id, str(session.get("device_label") or ""))
+    refresh, session_id = issue_refresh_token(
+        data, user_id, str(session.get("device_label") or "")
+    )
     return public_user(user), refresh, session_id
 
 
@@ -529,9 +565,15 @@ def revoke_refresh_token(data: dict[str, Any], user_id: str, raw: str) -> None:
     session["revoked_at"] = _iso()
 
 
-def change_password(data: dict[str, Any], user_id: str, old_password: str, new_password: str) -> None:
-    user = next((item for item in ensure_users(data) if item.get("user_id") == user_id), None)
-    if user is None or not verify_password(old_password, str(user.get("password_hash") or "")):
+def change_password(
+    data: dict[str, Any], user_id: str, old_password: str, new_password: str
+) -> None:
+    user = next(
+        (item for item in ensure_users(data) if item.get("user_id") == user_id), None
+    )
+    if user is None or not verify_password(
+        old_password, str(user.get("password_hash") or "")
+    ):
         raise AccountError("bad_login", "邮箱或密码错误")
     user["password_hash"] = hash_password(new_password)
     revoke_all_sessions(data, user_id)
@@ -554,7 +596,8 @@ def list_device_sessions(
                 "created_at": created,
                 "last_used_at": session.get("last_used_at") or created,
                 "expires_at": session.get("expires_at"),
-                "is_current": bool(current_session_id) and session.get("session_id") == current_session_id,
+                "is_current": bool(current_session_id)
+                and session.get("session_id") == current_session_id,
             }
         )
     return rows
@@ -593,10 +636,16 @@ def _clear_refresh_cookie(response) -> None:
     )
 
 
-def _issue_for_user(data: dict[str, Any], user: dict[str, Any], device_label: str) -> tuple[str, str]:
-    stored = next(item for item in ensure_users(data) if item.get("user_id") == user["user_id"])
+def _issue_for_user(
+    data: dict[str, Any], user: dict[str, Any], device_label: str
+) -> tuple[str, str]:
+    stored = next(
+        item for item in ensure_users(data) if item.get("user_id") == user["user_id"]
+    )
     refresh, session_id = issue_refresh_token(data, user["user_id"], device_label)
-    access = issue_access_token(user["user_id"], session_id, int(stored.get("session_version") or 0))
+    access = issue_access_token(
+        user["user_id"], session_id, int(stored.get("session_version") or 0)
+    )
     return access, refresh
 
 
@@ -648,7 +697,11 @@ def create_auth_router(read_data, write_data):
         return {"enabled": product_auth_enabled()}
 
     @auth.post("/auth/register")
-    async def register(body: CredentialBody, response: Response, x_kb_request: str | None = Header(default=None)):
+    async def register(
+        body: CredentialBody,
+        response: Response,
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         if rate_limited(f"register:{body.email.strip().lower()}"):
@@ -665,7 +718,11 @@ def create_auth_router(read_data, write_data):
         return {"access_token": access, "user": user}
 
     @auth.post("/auth/login")
-    async def login(body: CredentialBody, response: Response, x_kb_request: str | None = Header(default=None)):
+    async def login(
+        body: CredentialBody,
+        response: Response,
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         bucket = f"login:{body.email.strip().lower()}"
@@ -683,14 +740,26 @@ def create_auth_router(read_data, write_data):
         return {"access_token": access, "user": user}
 
     @auth.post("/auth/refresh")
-    async def refresh(request: Request, response: Response, x_kb_request: str | None = Header(default=None)):
+    async def refresh(
+        request: Request,
+        response: Response,
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         data = await read_data()
         try:
-            user, rotated, session_id = rotate_refresh_token(data, request.cookies.get(REFRESH_COOKIE, ""))
-            stored = next(item for item in ensure_users(data) if item.get("user_id") == user["user_id"])
-            access = issue_access_token(user["user_id"], session_id, int(stored.get("session_version") or 0))
+            user, rotated, session_id = rotate_refresh_token(
+                data, request.cookies.get(REFRESH_COOKIE, "")
+            )
+            stored = next(
+                item
+                for item in ensure_users(data)
+                if item.get("user_id") == user["user_id"]
+            )
+            access = issue_access_token(
+                user["user_id"], session_id, int(stored.get("session_version") or 0)
+            )
         except AccountError as exc:
             raise _http(exc) from exc
         await write_data(data)
@@ -698,18 +767,29 @@ def create_auth_router(read_data, write_data):
         return {"access_token": access, "user": user}
 
     @auth.post("/auth/logout")
-    async def logout(request: Request, response: Response, authorization: str | None = Header(default=None), x_kb_request: str | None = Header(default=None)):
+    async def logout(
+        request: Request,
+        response: Response,
+        authorization: str | None = Header(default=None),
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         user = await _user_from_header(authorization)
         data = await read_data()
-        revoke_refresh_token(data, user["user_id"], request.cookies.get(REFRESH_COOKIE, ""))
+        revoke_refresh_token(
+            data, user["user_id"], request.cookies.get(REFRESH_COOKIE, "")
+        )
         await write_data(data)
         _clear_refresh_cookie(response)
         return {"status": "ok"}
 
     @auth.post("/auth/logout-all")
-    async def logout_all(response: Response, authorization: str | None = Header(default=None), x_kb_request: str | None = Header(default=None)):
+    async def logout_all(
+        response: Response,
+        authorization: str | None = Header(default=None),
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         user = await _user_from_header(authorization)
@@ -720,7 +800,12 @@ def create_auth_router(read_data, write_data):
         return {"status": "ok"}
 
     @auth.post("/auth/password")
-    async def update_password(body: PasswordBody, response: Response, authorization: str | None = Header(default=None), x_kb_request: str | None = Header(default=None)):
+    async def update_password(
+        body: PasswordBody,
+        response: Response,
+        authorization: str | None = Header(default=None),
+        x_kb_request: str | None = Header(default=None),
+    ):
         _require_auth_enabled()
         _require_csrf(x_kb_request)
         user = await _user_from_header(authorization)
@@ -743,14 +828,18 @@ def create_auth_router(read_data, write_data):
         session_id = ""
         if authorization and authorization.lower().startswith("bearer "):
             try:
-                session_id = str(decode_access_payload(authorization[7:].strip()).get("sid") or "")
+                session_id = str(
+                    decode_access_payload(authorization[7:].strip()).get("sid") or ""
+                )
             except AccountError:
                 session_id = ""
         data = await read_data()
         return {"items": list_device_sessions(data, user["user_id"], session_id)}
 
     @auth.delete("/auth/sessions/{session_id}")
-    async def delete_session(session_id: str, authorization: str | None = Header(default=None)):
+    async def delete_session(
+        session_id: str, authorization: str | None = Header(default=None)
+    ):
         user = await _user_from_header(authorization)
         data = await read_data()
         try:

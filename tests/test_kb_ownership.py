@@ -7,16 +7,27 @@ import pytest
 from fastapi import HTTPException
 
 from lightrag.product_accounts import CURRENT_USER, LOCAL_OWNER_ID, visible_kbs
-from lightrag.product_deletion import apply_metadata_purge, begin_purge, mark_job, queue_retry
+from lightrag.product_deletion import (
+    apply_metadata_purge,
+    begin_purge,
+    mark_job,
+    queue_retry,
+)
 
 sys.argv = ["lightrag"]
-from lightrag.api.routers.product_shell import ShellStore, _find_kb, scoped_graph_records
+from lightrag.api.routers.product_shell import (
+    ShellStore,
+    _find_kb,
+    scoped_graph_records,
+)
 
 
 def test_existing_kb_is_bound_to_migration_user(tmp_path: Path):
     path = tmp_path / "product_shell.json"
     path.write_text(
-        json.dumps({"kbs": [{"id": "a3-default", "name": "默认知识库"}], "file_bindings": {}}),
+        json.dumps(
+            {"kbs": [{"id": "a3-default", "name": "默认知识库"}], "file_bindings": {}}
+        ),
         encoding="utf-8",
     )
     loaded = ShellStore(str(tmp_path)).load()
@@ -52,7 +63,9 @@ def test_graph_and_cache_do_not_cross_kb_files():
     kept_nodes, kept_edges = scoped_graph_records(nodes, edges, "kb-a", bindings)
     assert [item["id"] for item in kept_nodes] == ["甲"]
     assert kept_edges[0]["file_path"] == "a.txt"
-    assert all("b.txt" not in str(item.get("file_path")) for item in kept_nodes + kept_edges)
+    assert all(
+        "b.txt" not in str(item.get("file_path")) for item in kept_nodes + kept_edges
+    )
 
 
 def test_soft_delete_can_retry_after_failure():
@@ -68,7 +81,9 @@ def test_soft_delete_can_retry_after_failure():
     job = begin_purge(data, data["kbs"][0])
     assert data["kbs"][0]["deleted_at"]
     assert visible_kbs(data, "user-a") == []
-    cache = apply_metadata_purge(data, "kb-a", [{"kb_id": "kb-a", "answer": "旧答案"}, {"kb_id": "kb-b"}])
+    cache = apply_metadata_purge(
+        data, "kb-a", [{"kb_id": "kb-a", "answer": "旧答案"}, {"kb_id": "kb-b"}]
+    )
     assert data["file_bindings"] == {"b.txt": "kb-b"}
     assert data["qa_pairs"] == [{"id": "q2", "kb_id": "kb-b"}]
     assert cache == [{"kb_id": "kb-b"}]

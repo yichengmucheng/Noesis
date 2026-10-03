@@ -43,12 +43,14 @@ def _source_text(system_prompt: str | None, prompt: str | None) -> str:
 
 def _grounded(text: str, left: str, right: str, relation: str) -> str | None:
     if left in text and right in text and relation in text:
-        return "\n".join([
-            f"entity<|#|>{left}<|#|>概念<|#|>{left}",
-            f"entity<|#|>{right}<|#|>概念<|#|>{right}",
-            f"relation<|#|>{left}<|#|>{right}<|#|>{relation}<|#|>{text[:80]}",
-            "<|COMPLETE|>",
-        ])
+        return "\n".join(
+            [
+                f"entity<|#|>{left}<|#|>概念<|#|>{left}",
+                f"entity<|#|>{right}<|#|>概念<|#|>{right}",
+                f"relation<|#|>{left}<|#|>{right}<|#|>{relation}<|#|>{text[:80]}",
+                "<|COMPLETE|>",
+            ]
+        )
     return None
 
 
@@ -68,16 +70,24 @@ async def llm(prompt, system_prompt=None, history_messages=None, **kwargs):
         left, _, right = text.partition("导致")
         left, right = left.strip()[:40], right.strip()[:40]
         if left and right and left in text and right in text:
-            return "\n".join([
-                f"entity<|#|>{left}<|#|>部件<|#|>{left}",
-                f"entity<|#|>{right}<|#|>部件<|#|>{right}",
-                f"relation<|#|>{left}<|#|>{right}<|#|>导致<|#|>{text[:80]}",
-                "<|COMPLETE|>",
-            ])
-    pieces = [part.strip() for part in re.split(r"[\n。；]+", text) if len(part.strip()) >= 2]
+            return "\n".join(
+                [
+                    f"entity<|#|>{left}<|#|>部件<|#|>{left}",
+                    f"entity<|#|>{right}<|#|>部件<|#|>{right}",
+                    f"relation<|#|>{left}<|#|>{right}<|#|>导致<|#|>{text[:80]}",
+                    "<|COMPLETE|>",
+                ]
+            )
+    pieces = [
+        part.strip() for part in re.split(r"[\n。；]+", text) if len(part.strip()) >= 2
+    ]
     if not pieces:
         return "<|COMPLETE|>"
-    lines = [f"entity<|#|>{piece[:40]}<|#|>部件<|#|>{piece[:40]}" for piece in pieces[:2] if piece[:40] in text]
+    lines = [
+        f"entity<|#|>{piece[:40]}<|#|>部件<|#|>{piece[:40]}"
+        for piece in pieces[:2]
+        if piece[:40] in text
+    ]
     lines.append("<|COMPLETE|>")
     return "\n".join(lines)
 

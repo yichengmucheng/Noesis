@@ -77,11 +77,24 @@ def _parent_text(document: DocumentIR, unit: SourceUnit | None) -> str:
     if unit is None:
         return ""
     if unit.unit_type == "cell":
-        table = next((item for item in document.units if any(child.unit_id == unit.unit_id for child in item.children)), None)
+        table = next(
+            (
+                item
+                for item in document.units
+                if any(child.unit_id == unit.unit_id for child in item.children)
+            ),
+            None,
+        )
         if table is not None:
-            return "\n".join(child.content for child in table.children if child.content)[:1200]
+            return "\n".join(
+                child.content for child in table.children if child.content
+            )[:1200]
     if unit.section_path:
-        related = [item.content for item in document.walk() if item.section_path == unit.section_path and item.content]
+        related = [
+            item.content
+            for item in document.walk()
+            if item.section_path == unit.section_path and item.content
+        ]
         return "\n".join(related)[:1200]
     return ""
 
@@ -103,7 +116,11 @@ def build_source_view(
     parent = parent_context or (_parent_text(document, unit) if document else "")
     if parent == source_text:
         parent = ""
-    preview_kind = "pdf" if kind == "pdf" else ("text" if source_text or kind in {"text", "markdown"} else "none")
+    preview_kind = (
+        "pdf"
+        if kind == "pdf"
+        else ("text" if source_text or kind in {"text", "markdown"} else "none")
+    )
     return {
         "document_id": document.document_id if document else "",
         "version_id": document.version_id if document else "",
@@ -111,7 +128,10 @@ def build_source_view(
         "mime_type": mime_of(doc_name, document.source_type if document else ""),
         "source_kind": kind,
         "unit": _unit_view(unit),
-        "matched_chunk": {"chunk_id": chunk_id, "excerpt": (excerpt or source_text)[:500]},
+        "matched_chunk": {
+            "chunk_id": chunk_id,
+            "excerpt": (excerpt or source_text)[:500],
+        },
         "parent_context": parent[:1200],
         "source_text": source_text[:4000],
         "preview": {"available": kind == "pdf", "kind": preview_kind, "url": None},
@@ -149,11 +169,18 @@ def resolve_owned_file(input_dir: Path, storage_key: str) -> Path | None:
     return path
 
 
-def build_reading(document: DocumentIR | None, *, kind: str, file_text: str = "") -> dict[str, Any]:
+def build_reading(
+    document: DocumentIR | None, *, kind: str, file_text: str = ""
+) -> dict[str, Any]:
     units = []
     if document is not None:
         for unit in document.walk():
-            if not unit.content and not unit.section_path and unit.page_number is None and unit.slide_number is None:
+            if (
+                not unit.content
+                and not unit.section_path
+                and unit.page_number is None
+                and unit.slide_number is None
+            ):
                 continue
             view = _unit_view(unit)
             view["unit_type"] = unit.unit_type

@@ -78,22 +78,54 @@ def test_graph_explorer_uses_names_but_queries_by_entity_id(tmp_path, monkeypatc
         headers={"X-KB-Request": "1"},
     ).json()["id"]
     graph.nodes = [
-        {"id": "ent-a1", "name": "百事通", "entity_type": "项目", "kb_id": kb_id, "source_id": "chunk-a"},
-        {"id": "ent-a2", "name": "MCP", "entity_type": "技术", "kb_id": kb_id, "source_id": "chunk-a"},
-        {"id": "ent-a3", "name": "外部工具", "entity_type": "概念", "kb_id": kb_id, "source_id": "chunk-b"},
+        {
+            "id": "ent-a1",
+            "name": "百事通",
+            "entity_type": "项目",
+            "kb_id": kb_id,
+            "source_id": "chunk-a",
+        },
+        {
+            "id": "ent-a2",
+            "name": "MCP",
+            "entity_type": "技术",
+            "kb_id": kb_id,
+            "source_id": "chunk-a",
+        },
+        {
+            "id": "ent-a3",
+            "name": "外部工具",
+            "entity_type": "概念",
+            "kb_id": kb_id,
+            "source_id": "chunk-b",
+        },
         {"id": "ent-orphan", "name": "孤立抽取", "entity_type": "短语", "kb_id": kb_id},
         {"id": "ent-deadbeef", "entity_type": "短语", "kb_id": kb_id},
-        {"id": "ent-other", "name": "其他知识库", "entity_type": "项目", "kb_id": "other-kb"},
+        {
+            "id": "ent-other",
+            "name": "其他知识库",
+            "entity_type": "项目",
+            "kb_id": "other-kb",
+        },
     ]
     graph.edges = [
         {"source": "ent-a1", "target": "ent-a2", "keywords": "使用", "kb_id": kb_id},
         {"source": "ent-a2", "target": "ent-a3", "keywords": "连接", "kb_id": kb_id},
-        {"source": "ent-a1", "target": "ent-other", "keywords": "泄漏", "kb_id": "other-kb"},
+        {
+            "source": "ent-a1",
+            "target": "ent-other",
+            "keywords": "泄漏",
+            "kb_id": "other-kb",
+        },
     ]
 
     overview = client.get("/api/v1/graph/subgraph", params={"kb_id": kb_id}).json()
     assert overview["mode"] == "overview"
-    assert {node["label"] for node in overview["nodes"]} == {"百事通", "MCP", "外部工具"}
+    assert {node["label"] for node in overview["nodes"]} == {
+        "百事通",
+        "MCP",
+        "外部工具",
+    }
     assert all(not node["label"].startswith("ent-") for node in overview["nodes"])
     assert "孤立抽取" not in {node["label"] for node in overview["nodes"]}
     assert "其他知识库" not in {node["label"] for node in overview["nodes"]}
@@ -117,14 +149,18 @@ def test_graph_explorer_uses_names_but_queries_by_entity_id(tmp_path, monkeypatc
     relations = client.get("/api/v1/graph/relations", params={"kb_id": kb_id}).json()
     assert relations["items"][0]["source"] in {"百事通", "MCP"}
     assert all(not row["source"].startswith("ent-") for row in relations["items"])
-    assert all("其他知识库" not in {row["source"], row["target"]} for row in relations["items"])
+    assert all(
+        "其他知识库" not in {row["source"], row["target"]} for row in relations["items"]
+    )
 
     entities = client.get("/api/v1/graph/entities", params={"kb_id": kb_id}).json()
     unnamed = next(item for item in entities["items"] if item["id"] == "ent-deadbeef")
     assert unnamed["name"] == "未命名实体"
 
 
-def test_graph_search_resolves_display_name_and_keeps_internal_id(tmp_path, monkeypatch):
+def test_graph_search_resolves_display_name_and_keeps_internal_id(
+    tmp_path, monkeypatch
+):
     client, graph = _client(tmp_path, monkeypatch)
     kb_id = client.post(
         "/api/v1/kb",

@@ -54,10 +54,13 @@ def test_equal_scores_are_not_forced_through_threshold():
         {"chunk_id": "b", "score": 2.0, "content": "乙"},
     ]
     assert filter_by_threshold(hits, 0.5) == []
-    assert filter_by_threshold(
-        [{"chunk_id": "a", "score": 0.15}, {"chunk_id": "b", "score": 0.15}],
-        0.2,
-    ) == []
+    assert (
+        filter_by_threshold(
+            [{"chunk_id": "a", "score": 0.15}, {"chunk_id": "b", "score": 0.15}],
+            0.2,
+        )
+        == []
+    )
 
 
 def test_bm25_transform_is_monotonic_from_zero():
@@ -132,7 +135,10 @@ def test_reorder_by_rerank():
 
 
 def test_threshold_uses_absolute_scores():
-    calibrated = [{"chunk_id": "high", "score": 0.82}, {"chunk_id": "low", "score": 0.11}]
+    calibrated = [
+        {"chunk_id": "high", "score": 0.82},
+        {"chunk_id": "low", "score": 0.11},
+    ]
     kept = filter_by_threshold(calibrated, 0.3)
     assert [item["chunk_id"] for item in kept] == ["high"]
     raw = [{"chunk_id": "strong", "score": 12}, {"chunk_id": "weak", "score": 1.2}]
@@ -174,17 +180,19 @@ class _VectorDB:
         scored = []
         for row in self.rows:
             cosine = float(np.dot(query_vector, row["vector"]))
-            scored.append({
-                "id": row["chunk_id"],
-                "__id__": row["chunk_id"],
-                "content": row["content"],
-                "file_path": row["file_path"],
-                "document_id": row.get("document_id"),
-                "unit_id": row.get("unit_id"),
-                "kb_id": row.get("kb_id"),
-                "owner_id": row.get("owner_id"),
-                "distance": cosine,
-            })
+            scored.append(
+                {
+                    "id": row["chunk_id"],
+                    "__id__": row["chunk_id"],
+                    "content": row["content"],
+                    "file_path": row["file_path"],
+                    "document_id": row.get("document_id"),
+                    "unit_id": row.get("unit_id"),
+                    "kb_id": row.get("kb_id"),
+                    "owner_id": row.get("owner_id"),
+                    "distance": cosine,
+                }
+            )
         scored.sort(key=lambda item: item["distance"], reverse=True)
         return scored[:top_k]
 
@@ -220,17 +228,19 @@ class _Rag:
 def _library(*pairs: tuple[str, str]) -> list[dict]:
     rows = []
     for chunk_id, content in pairs:
-        rows.append({
-            "chunk_id": chunk_id,
-            "content": content,
-            "doc_name": chunk_id + ".txt",
-            "file_path": chunk_id + ".txt",
-            "document_id": chunk_id.split("-")[0],
-            "unit_id": "t0001",
-            "kb_id": "kb-test",
-            "owner_id": "user-test",
-            "vector": _embed_one(content),
-        })
+        rows.append(
+            {
+                "chunk_id": chunk_id,
+                "content": content,
+                "doc_name": chunk_id + ".txt",
+                "file_path": chunk_id + ".txt",
+                "document_id": chunk_id.split("-")[0],
+                "unit_id": "t0001",
+                "kb_id": "kb-test",
+                "owner_id": "user-test",
+                "vector": _embed_one(content),
+            }
+        )
     return rows
 
 
@@ -262,7 +272,9 @@ def test_single_resume_chunk_rejects_unrelated_queries():
     rows = _library(("resume-c0001", EDU))
     for mode in ("vector", "keyword", "hybrid", "mix", "tree"):
         matched = _search(rows, EDU_QUERY, mode)
-        assert [item["chunk_id"] for item in matched["chunks"]] == ["resume-c0001"], mode
+        assert [item["chunk_id"] for item in matched["chunks"]] == [
+            "resume-c0001"
+        ], mode
         assert EDU in matched["chunks"][0]["content"]
         assert matched["chunks"][0]["calibrated_score"] < 1.0
         assert matched["chunks"][0]["score"] != 1.0
