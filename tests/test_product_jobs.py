@@ -524,7 +524,11 @@ def test_jobs_are_listed_filtered_and_sorted(tmp_path, monkeypatch):
     assert page["items"][0]["job_id"] == newer["job_id"]
     assert store.list_jobs(user_id="user-a", doc_id="doc-old")["items"][0]["job_id"] == older["job_id"]
     failed = store.transition(older["job_id"], "failed", error_code="user_input", error_message="文件内容为空")
-    assert store.request_retry(failed["job_id"], "user-a")["status"] == "queued"
+    retried = store.request_retry(failed["job_id"], "user-a")
+    assert retried["status"] == "queued"
+    assert retried["started_at"] == ""
+    acquired = store.acquire("retry-worker")
+    assert acquired["started_at"]
 
 
 def test_api_returns_job_id_immediately_and_refresh_uses_saved_status(tmp_path, monkeypatch):

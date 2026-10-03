@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -134,3 +134,61 @@ async def synthesize_speech(text: str, voice: str | None = None) -> tuple[bytes,
     if not response.content:
         raise VoiceProviderError("语音合成返回空音频", code="tts_empty_result")
     return response.content, response.headers.get("content-type", "audio/mpeg").split(";", 1)[0]
+
+
+async def stream_speech(text: str, voice: str | None = None) -> AsyncIterator[bytes]:
+    """Yield provider audio chunks as soon as the configured provider emits them.
+
+    ``TTS_PROVIDER=aliyun_nls`` selects Alibaba NLS WebSocket synthesis. The
+    default remains the existing OpenAI-compatible HTTP adapter for backwards
+    compatibility; neither path silently falls back to the other.
+    """
+    if os.getenv("TTS_PROVIDER", "siliconflow").strip().lower() in {"aliyun", "aliyun_nls", "nls"}:
+        from lightrag.product_realtime_voice import (
+            AliyunNlsTtsConfig,
+            stream_aliyun_speech,
+        )
+
+        config = AliyunNlsTtsConfig.from_env()
+        if voice:
+            config = AliyunNlsTtsConfig(**{**config.__dict__, "voice": voice})
+        async for chunk in stream_aliyun_speech(text, config):
+            yield chunk
+        return
+
+    config = VoiceConfig.from_env()
+    if not config.tts_base or not config.tts_key or not config.tts_model:
+        raise VoiceProviderError("语音合成服务尚未配置", code="tts_not_configured")
+    clean = str(text or "").strip()
+    if not clean:
+        raise VoiceProviderError("没有可播放的回答", status_code=400, code="empty_text")
+    try:
+        timeout = httpx.Timeout(config.timeout, read=config.timeout)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
+                _endpoint(config.tts_base, "/audio/speech"),
+                headers={**_headers(config.tts_key), "Content-Type": "application/json"},
+                json={
+                    "model": config.tts_model,
+                    "voice": voice or config.tts_voice,
+                    "input": clean[:16000],
+                    "response_format": "mp3",
+                    "stream": True,
+                },
+            ) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    error = httpx.Response(response.status_code, content=body)
+                    raise VoiceProviderError(_provider_message(error, "语音合成失败"), code="tts_failed")
+                emitted = False
+                async for chunk in response.aiter_bytes():
+                    if chunk:
+                        emitted = True
+                        yield chunk
+                if not emitted:
+                    raise VoiceProviderError("语音合成返回空音频", code="tts_empty_result")
+    except VoiceProviderError:
+        raise
+    except httpx.HTTPError as exc:
+        raise VoiceProviderError("语音合成服务暂时不可用") from exc

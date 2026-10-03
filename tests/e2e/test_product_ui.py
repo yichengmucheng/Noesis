@@ -408,7 +408,15 @@ def test_product_navigation_account_jobs_chat(tmp_path):
                 route.fulfill(status=200, content_type="application/json", body=json.dumps(voice_state["session"]))
                 return
             if route.request.method == "GET" and path.endswith("/sessions"):
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [voice_state["session"]] if voice_state["session"] else []}))
+                session = voice_state["session"]
+                item = {
+                    **session,
+                    "turn_count": len(voice_state["turns"]),
+                    "completed_turn_count": len([turn for turn in voice_state["turns"] if turn.get("answer")]),
+                    "cited_turn_count": len([turn for turn in voice_state["turns"] if turn.get("citations")]),
+                    "first_transcript": voice_state["turns"][0]["transcript"] if voice_state["turns"] else "",
+                } if session else None
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [item] if item else []}, ensure_ascii=False))
                 return
             if route.request.method == "GET":
                 route.fulfill(status=200, content_type="application/json", body=json.dumps({**(voice_state["session"] or {}), "turns": voice_state["turns"]}))
@@ -467,7 +475,7 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.route(re.compile(r"/api/v1/memory-candidates/.+/reject"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
             page.route(re.compile(r"/api/v1/memories$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": [{"id": "mem-1", "content": "偏好简洁", "enabled": True, "category": "preference"}]}, ensure_ascii=False)))
             page.route(re.compile(r"/api/v1/memories/.+"), lambda route: route.fulfill(status=200, content_type="application/json", body='{"ok":true}'))
-            page.route("**/api/v1/voice/practice/sessions**", voice_sessions)
+            page.route(re.compile(r"/api/v1/voice/practice/sessions(?:/[^/?]+)?(?:\?.*)?$"), voice_sessions)
             page.route(re.compile(r"/api/v1/voice/practice/.+/(turn|finish)$"), voice_turn)
             page.route("**/api/v1/voice/transcribe", lambda route: route.fulfill(status=200, content_type="application/json", body='{"text":"请复述重点"}'))
             page.route("**/api/v1/voice/speech", lambda route: route.fulfill(status=200, content_type="audio/mpeg", body=b"fake-audio"))
@@ -497,8 +505,17 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_text("重点是资料结论").wait_for()
             page.get_by_test_id("voice-play").click()
             page.get_by_test_id("voice-finish").click()
+            page.get_by_text("练习已保存").wait_for()
             page.set_viewport_size({"width": 390, "height": 844})
+            with page.expect_response(lambda response: "/voice/practice/sessions/voice-1" in response.url) as history_detail:
+                page.get_by_test_id("voice-history-open").click()
+            assert history_detail.value.status == 200
+            page.get_by_test_id("voice-review-drawer").wait_for()
+            page.get_by_text("完整对话").wait_for()
+            page.get_by_text("重点是资料结论").last.wait_for()
+            page.get_by_text("有来源回答").wait_for()
             assert page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            page.locator(".ant-drawer-open .ant-drawer-close").click()
             page.set_viewport_size({"width": 1280, "height": 800})
             page.get_by_test_id("nav-documents").click()
             page.get_by_test_id("nav-documents").wait_for()

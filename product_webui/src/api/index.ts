@@ -22,6 +22,12 @@ export function authHeader(): Record<string, string> {
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 }
 
+export function realtimeVoiceSocketUrl(): { url: string; protocols: string[] } {
+  const base = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+  const url = `${base}/api/v1/voice/realtime`
+  return accessToken ? { url, protocols: [`kb-access.${accessToken}`] } : { url, protocols: [] }
+}
+
 export function isLoggedIn() {
   return Boolean(accessToken)
 }
@@ -245,8 +251,8 @@ export const graphApi = {
   }) =>
     http.get<any, any>('/graph/entities', { params: { kb_id: kbId, ...params } }),
 
-  getEntityNeighbors: (kbId: string, entityName: string, hops = 2) =>
-    http.get<any, any>(`/graph/entities/${encodeURIComponent(entityName)}/neighbors`, {
+  getEntityNeighbors: (kbId: string, entityId: string, hops = 2) =>
+    http.get<any, any>(`/graph/entities/${encodeURIComponent(entityId)}/neighbors`, {
       params: { kb_id: kbId, hops },
     }),
 
@@ -255,9 +261,15 @@ export const graphApi = {
   }) =>
     http.get<any, any>('/graph/relations', { params: { kb_id: kbId, ...params } }),
 
-  getSubgraph: (kbId: string, entityName?: string, hops = 2, limit = 100) =>
+  getSubgraph: (kbId: string, focus?: { entityId?: string; entityName?: string }, hops = 2, limit = 24) =>
     http.get<any, any>('/graph/subgraph', {
-      params: { kb_id: kbId, entity_name: entityName, hops, limit },
+      params: {
+        kb_id: kbId,
+        entity_id: focus?.entityId,
+        entity_name: focus?.entityName,
+        hops,
+        limit,
+      },
     }),
 
   getConfig: (kbId: string) =>

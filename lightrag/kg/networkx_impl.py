@@ -15,6 +15,14 @@ from .shared_storage import (
 
 from dotenv import load_dotenv
 
+
+def _file_signature(path: str) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
 # use the .env that is inside the current folder
 # allows to use different .env file for each lightrag instance
 # the OS environment variables take precedence over the .env file
@@ -68,6 +76,7 @@ class NetworkXStorage(BaseGraphStorage):
                 f"[{self.workspace}] Created new empty graph fiel: {self._graphml_xml_file}"
             )
         self._graph = preloaded_graph or nx.Graph()
+        self._disk_signature = _file_signature(self._graphml_xml_file)
 
     async def initialize(self):
         """Initialize storage data"""
@@ -81,7 +90,8 @@ class NetworkXStorage(BaseGraphStorage):
         # Acquire lock to prevent concurrent read and write
         async with self._storage_lock:
             # Check if data needs to be reloaded
-            if self.storage_updated.value:
+            signature = _file_signature(self._graphml_xml_file)
+            if self.storage_updated.value or signature != self._disk_signature:
                 logger.info(
                     f"[{self.workspace}] Process {os.getpid()} reloading graph {self._graphml_xml_file} due to modifications by another process"
                 )
@@ -89,6 +99,7 @@ class NetworkXStorage(BaseGraphStorage):
                 self._graph = (
                     NetworkXStorage.load_nx_graph(self._graphml_xml_file) or nx.Graph()
                 )
+                self._disk_signature = signature
                 # Reset update flag
                 self.storage_updated.value = False
 
@@ -456,6 +467,7 @@ class NetworkXStorage(BaseGraphStorage):
                 self._graph = (
                     NetworkXStorage.load_nx_graph(self._graphml_xml_file) or nx.Graph()
                 )
+                self._disk_signature = _file_signature(self._graphml_xml_file)
                 # Reset update flag
                 self.storage_updated.value = False
                 return False  # Return error
@@ -467,6 +479,7 @@ class NetworkXStorage(BaseGraphStorage):
                 NetworkXStorage.write_nx_graph(
                     self._graph, self._graphml_xml_file, self.workspace
                 )
+                self._disk_signature = _file_signature(self._graphml_xml_file)
                 # Notify other processes that data has been updated
                 await set_all_update_flags(self.final_namespace)
                 # Reset own update flag to avoid self-reloading
@@ -498,6 +511,7 @@ class NetworkXStorage(BaseGraphStorage):
                 if os.path.exists(self._graphml_xml_file):
                     os.remove(self._graphml_xml_file)
                 self._graph = nx.Graph()
+                self._disk_signature = _file_signature(self._graphml_xml_file)
                 # Notify other processes that data has been updated
                 await set_all_update_flags(self.final_namespace)
                 # Reset own update flag to avoid self-reloading

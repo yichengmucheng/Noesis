@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import json
 import threading
 
@@ -20,6 +21,25 @@ from lightrag.product_storage import (
 )
 from lightrag.product_uploads import allocate_upload
 from lightrag.testing_index_runtime import embed_vector
+
+
+def test_worker_embedding_uses_configured_qwen_dimension(monkeypatch):
+    import lightrag.llm.openai as openai_module
+    from lightrag.product_index import _configured_embed
+
+    observed = {}
+
+    async def fake_embed(texts, **kwargs):
+        observed.update(kwargs)
+        return [[0.0] * int(kwargs["dimensions"]) for _ in texts]
+
+    monkeypatch.setenv("EMBEDDING_BINDING", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")
+    monkeypatch.setenv("EMBEDDING_DIM", "1024")
+    monkeypatch.setattr(openai_module, "openai_embed", fake_embed)
+    result = asyncio.run(_configured_embed(["测试"]))
+    assert observed["dimensions"] == 1024
+    assert len(result[0]) == 1024
 
 
 def _run(tmp_path, monkeypatch, text: str):

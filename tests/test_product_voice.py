@@ -70,6 +70,12 @@ def test_voice_schema_migrates_and_isolates(tmp_path):
     assert store.update_voice_practice_turn_audio(
         store.list_voice_practice_turns(first["id"], "user-a", "kb-a")[0]["id"], "user-a", "ready"
     )["audio_status"] == "ready"
+    listed = store.list_voice_practice_sessions("user-a", "kb-a")
+    assert len(listed) == 1
+    assert listed[0]["turn_count"] == 1
+    assert listed[0]["completed_turn_count"] == 1
+    assert listed[0]["cited_turn_count"] == 1
+    assert listed[0]["first_transcript"] == "如何复述这份资料？"
     assert store.list_voice_practice_turns(second["id"], "user-a", "kb-b") == []
     store.purge_kb("kb-a", "user-a")
     assert store.get_voice_practice_session(first["id"], "user-a", "kb-a") is None

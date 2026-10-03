@@ -316,6 +316,10 @@ export interface VoicePracticeSession {
   created_at?: string
   updated_at?: string
   ended_at?: string
+  turn_count?: number
+  completed_turn_count?: number
+  cited_turn_count?: number
+  first_transcript?: string
   turns?: VoicePracticeTurn[]
 }
 

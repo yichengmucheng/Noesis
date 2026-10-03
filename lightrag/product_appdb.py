@@ -1026,9 +1026,32 @@ class AppStore:
 
     def list_voice_practice_sessions(self, owner_id: str, kb_id: str, limit: int = 30) -> list[dict[str, Any]]:
         rows = self._all(
-            """SELECT * FROM voice_practice_sessions
-               WHERE owner_id = ? AND kb_id = ?
-               ORDER BY updated_at DESC LIMIT ?""",
+            """SELECT
+                   sessions.*,
+                   COUNT(turns.id) AS turn_count,
+                   COALESCE(SUM(CASE WHEN turns.status = 'completed' THEN 1 ELSE 0 END), 0)
+                       AS completed_turn_count,
+                   COALESCE(SUM(CASE
+                       WHEN turns.citations_json IS NOT NULL
+                            AND turns.citations_json NOT IN ('', '[]')
+                       THEN 1 ELSE 0 END), 0) AS cited_turn_count,
+                   COALESCE((
+                       SELECT first_turn.transcript
+                       FROM voice_practice_turns AS first_turn
+                       WHERE first_turn.session_id = sessions.id
+                         AND first_turn.owner_id = sessions.owner_id
+                         AND first_turn.kb_id = sessions.kb_id
+                       ORDER BY first_turn.created_at ASC
+                       LIMIT 1
+                   ), '') AS first_transcript
+               FROM voice_practice_sessions AS sessions
+               LEFT JOIN voice_practice_turns AS turns
+                 ON turns.session_id = sessions.id
+                AND turns.owner_id = sessions.owner_id
+                AND turns.kb_id = sessions.kb_id
+               WHERE sessions.owner_id = ? AND sessions.kb_id = ?
+               GROUP BY sessions.id
+               ORDER BY sessions.updated_at DESC LIMIT ?""",
             (owner_id, kb_id, max(1, min(int(limit or 30), 100))),
         )
         return [self._public_voice_session(row) for row in rows]
@@ -1249,7 +1272,7 @@ class AppStore:
 
     def _public_voice_session(self, row: Any) -> dict[str, Any]:
         data = dict(row)
-        return {
+        session = {
             "id": data["id"],
             "owner_id": data["owner_id"],
             "kb_id": data["kb_id"],
@@ -1261,6 +1284,14 @@ class AppStore:
             "updated_at": data.get("updated_at") or "",
             "ended_at": data.get("ended_at") or "",
         }
+        if "turn_count" in data:
+            session.update({
+                "turn_count": int(data.get("turn_count") or 0),
+                "completed_turn_count": int(data.get("completed_turn_count") or 0),
+                "cited_turn_count": int(data.get("cited_turn_count") or 0),
+                "first_transcript": str(data.get("first_transcript") or ""),
+            })
+        return session
 
     def _public_voice_turn(self, row: Any) -> dict[str, Any]:
         data = dict(row)

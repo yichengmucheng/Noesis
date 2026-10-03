@@ -25,7 +25,7 @@ export default function KBSettingsPage() {
         top_k: value.top_k ?? 10,
         similarity_ratio: value.similarity_ratio ?? 0.5,
         similarity_threshold: value.similarity_threshold ?? 0.2,
-        rerank_enabled: value.rerank_enabled ?? false,
+        rerank_enabled: value.rerank_enabled ?? true,
         graph_enabled: value.graph_enabled ?? true,
         context_expand: value.context_expand ?? false,
         answer_detail: value.answer_detail === 'brief' ? 'concise' : value.answer_detail === 'normal' || !value.answer_detail ? 'standard' : value.answer_detail,

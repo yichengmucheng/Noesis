@@ -301,3 +301,13 @@ python -m lightrag.product_storage_check --working-dir data/rag_storage --repair
 ```
 
 `--repair-safe` 只恢复已经存在且可读的备份，或把过期租约收回队列。它不会猜测 `owner_id` 或 `kb_id`。无法确认归属的数据留在隔离区，不参与检索。
+
+## 15. 实时语音对话
+
+语音练习页提供 WebSocket 实时会话：浏览器持续发送 16 kHz 单声道 PCM，阿里云 NLS 返回增量转写；用户停顿后进入当前知识库的检索、问答和个人记忆链路，回答 token 和 TTS 音频按流发送。会话仍校验 `owner_id`、`kb_id`，来源引用沿用普通问答的证据结构。
+
+实时 ASR 需要在服务端配置 `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 和阿里 NLS 项目的 `ALIYUN_NLS_APP_KEY`（也可以配置短期 `ALIYUN_NLS_TOKEN`）。密钥只放服务端环境变量，不传给浏览器。
+
+TTS provider 必须显式选择。默认 `TTS_PROVIDER=siliconflow` 使用现有 OpenAI-compatible HTTP 流；阿里 NLS 语音合成需要在控制台开通对应能力并设置 `TTS_PROVIDER=aliyun_nls`、`ALIYUN_TTS_APP_KEY`（或 token）和可用音色 `ALIYUN_TTS_VOICE`。ASR 已配置不代表 TTS 已开通，未配置时页面会显示服务错误，不会播放空音频。
+
+WebSocket 断线会在浏览器端以 1、2、4、8 秒退避重连，最多 5 次，并复用当前练习会话；用户主动结束或取消后不会自动重连。浏览器需要允许麦克风和 WebSocket 连接，生产环境应使用 HTTPS/WSS。

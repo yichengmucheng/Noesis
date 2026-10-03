@@ -108,7 +108,7 @@ def job_settings() -> dict[str, Any]:
         "parse_timeout": env_int("STAGE_PARSE_TIMEOUT_SECONDS", 120),
         "chunk_timeout": env_int("STAGE_CHUNK_TIMEOUT_SECONDS", 120),
         "embed_timeout": env_int("STAGE_EMBED_TIMEOUT_SECONDS", 180),
-        "graph_timeout": env_int("STAGE_GRAPH_TIMEOUT_SECONDS", 180),
+        "graph_timeout": env_int("STAGE_GRAPH_TIMEOUT_SECONDS", 600),
         "validate_timeout": env_int("STAGE_VALIDATE_TIMEOUT_SECONDS", 60),
         "overall_timeout": env_int("JOB_OVERALL_TIMEOUT_SECONDS", 900),
     }
@@ -410,6 +410,7 @@ class _SqlStore(ProductStore):
             error_code="",
             error_message="",
             retry_at="",
+            started_at="",
             finished_at="",
             worker_id="",
             lease_until="",
