@@ -98,7 +98,12 @@ def test_transcriber_events_include_incremental_and_final_text():
         )
     )
     final = parse_transcriber_event(
-        json.dumps({"header": {"name": "SentenceEnd"}, "payload": {"result": "你好。"}})
+        json.dumps(
+            {
+                "header": {"name": "SentenceEnd"},
+                "payload": {"result": "你好。", "confidence": 0.93},
+            }
+        )
     )
     failed = parse_transcriber_event(
         json.dumps(
@@ -120,6 +125,7 @@ def test_transcriber_events_include_incremental_and_final_text():
         "event": "TranscriptionResultChanged",
     }
     assert final["final"] is True
+    assert final["confidence"] == 0.93
     assert failed["type"] == "provider_error"
     assert failed["provider_code"] == "40000002"
     assert failed["message"] == "MESSAGE_INVALID"

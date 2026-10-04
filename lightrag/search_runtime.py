@@ -65,6 +65,22 @@ def _retrieved_score(raw: dict[str, Any] | None, index: int = 0) -> float | None
     return None
 
 
+def _temporal_active(record: dict[str, Any]) -> bool:
+    """Hide superseded graph facts from current retrieval, retaining storage history."""
+    invalid = str(record.get("invalid_at") or "").strip()
+    if not invalid:
+        return True
+    try:
+        from datetime import datetime, timezone
+
+        value = datetime.fromisoformat(invalid.replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value > datetime.now(timezone.utc)
+    except ValueError:
+        return False
+
+
 def _cosine(left: Any, right: Any) -> float | None:
     import numpy as np
 
@@ -323,6 +339,8 @@ async def _graph_hits(
     if hasattr(graph, "get_all_nodes"):
         matched: list[tuple[int, str, str]] = []
         for node in await graph.get_all_nodes() or []:
+            if not _temporal_active(node):
+                continue
             node_id = str(node.get("id") or node.get("entity_id") or "")
             label = str(node.get("name") or "")
             if not node_id or len(label) < 2 or label not in query:
@@ -368,6 +386,8 @@ async def _graph_hits(
                     or await graph.get_edge(tgt, src)
                     or {}
                 )
+                if edge and not _temporal_active(edge):
+                    continue
                 if edge and not _record_in_kb(edge, kb_id, owner_id):
                     continue
                 label = str(
@@ -396,6 +416,8 @@ async def _graph_hits(
     seen_chunks: set[str] = set()
     for item in paths:
         node = await graph.get_node(item["name"]) or {}
+        if node and not _temporal_active(node):
+            continue
         if node and not _record_in_kb(node, kb_id, owner_id):
             continue
         if not _in_scope(file_in_kb, str(node.get("file_path") or ""), node):

@@ -10,7 +10,8 @@ import {
 } from '@ant-design/icons'
 import { realtimeVoiceSocketUrl, voiceApi } from '../../api'
 import { SourceReader } from '../../components/SourceDrawer'
-import type { Citation, VoicePracticeSession, VoicePracticeTurn } from '../../types'
+import type { Citation, VoicePracticeSession, VoicePracticeTurn, VoiceTurnDiagnostics } from '../../types'
+import VoiceRealtimeConsole from './VoiceRealtimeConsole'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -59,12 +60,29 @@ export default function VoicePracticePage() {
   const realtimeReconnectAttemptRef = useRef(0)
   const realtimeManualStopRef = useRef(false)
   const realtimeAsrReadyRef = useRef(false)
+  const realtimeSpeechStartedAtRef = useRef<number | null>(null)
+  const realtimeLastSpeechAtRef = useRef<number | null>(null)
+  const realtimeTurnSentAtRef = useRef<number | null>(null)
+  const realtimeFirstPartialAtRef = useRef<number | null>(null)
+  const realtimePreviousPartialRef = useRef('')
+  const realtimeInterimCountRef = useRef(0)
+  const realtimeRevisionCountRef = useRef(0)
+  const realtimeFrameCountRef = useRef(0)
+  const realtimeSpeechFrameCountRef = useRef(0)
+  const realtimePeakDbRef = useRef(-120)
+  const realtimeLevelUpdatedAtRef = useRef(0)
+  const realtimeFirstAudioRef = useRef(false)
   const [realtimeState, setRealtimeState] = useState<RealtimeState>('idle')
   const [realtimeTranscript, setRealtimeTranscript] = useState('')
   const [realtimeAnswer, setRealtimeAnswer] = useState('')
   const [realtimeCitations, setRealtimeCitations] = useState<Citation[]>([])
   const [realtimeError, setRealtimeError] = useState('')
   const [realtimeStatus, setRealtimeStatus] = useState('')
+  const [realtimeDiagnostics, setRealtimeDiagnostics] = useState<VoiceTurnDiagnostics>({})
+  const [realtimeMicLevel, setRealtimeMicLevel] = useState(0)
+  const [realtimeOutputLevel, setRealtimeOutputLevel] = useState(0)
+  const [realtimeMicSamples, setRealtimeMicSamples] = useState<number[]>([])
+  const [realtimeOutputSamples, setRealtimeOutputSamples] = useState<number[]>([])
   const [historySession, setHistorySession] = useState<VoicePracticeSession | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -123,6 +141,32 @@ export default function VoicePracticePage() {
     realtimeMediaSourceRef.current = null
     realtimeSourceBufferRef.current = null
     realtimeAudioQueueRef.current = []
+    setRealtimeOutputLevel(0)
+  }
+
+  const mergeRealtimeDiagnostics = (next?: VoiceTurnDiagnostics) => {
+    if (!next) return
+    setRealtimeDiagnostics(current => ({ ...current, ...next }))
+  }
+
+  const resetRealtimeTurnMetrics = () => {
+    realtimeSpeechStartedAtRef.current = performance.now()
+    realtimeLastSpeechAtRef.current = performance.now()
+    realtimeTurnSentAtRef.current = null
+    realtimeFirstPartialAtRef.current = null
+    realtimePreviousPartialRef.current = ''
+    realtimeInterimCountRef.current = 0
+    realtimeRevisionCountRef.current = 0
+    realtimeFrameCountRef.current = 0
+    realtimeSpeechFrameCountRef.current = 0
+    realtimePeakDbRef.current = -120
+    realtimeFirstAudioRef.current = false
+    setRealtimeDiagnostics(current => ({
+      asr_errors: current.asr_errors || 0,
+      reconnects: current.reconnects || 0,
+    }))
+    setRealtimeMicSamples([])
+    setRealtimeOutputSamples([])
   }
 
   const flushRealtimeAudio = () => {
@@ -190,24 +234,51 @@ export default function VoicePracticePage() {
         let energy = 0
         for (let index = 0; index < samples.length; index += 1) energy += samples[index] * samples[index]
         const rms = Math.sqrt(energy / Math.max(1, samples.length))
+        const db = rms > 0 ? Math.max(-120, 20 * Math.log10(rms)) : -120
+        const now = performance.now()
+        if (now - realtimeLevelUpdatedAtRef.current >= 80) {
+          const level = Math.min(1, rms / 0.12)
+          realtimeLevelUpdatedAtRef.current = now
+          setRealtimeMicLevel(level)
+          setRealtimeMicSamples(values => [...values.slice(-35), level])
+        }
         const active = realtimeStateRef.current === 'listening' || realtimeStateRef.current === 'thinking' || realtimeStateRef.current === 'speaking'
         if (!active) return
         if (rms > 0.018) {
           if (!realtimeSpeechRef.current) {
+            resetRealtimeTurnMetrics()
             if (realtimeStateRef.current === 'thinking' || realtimeStateRef.current === 'speaking') cancelRealtime('barge_in')
             else {
               setRealtimeAnswer('')
               setRealtimeCitations([])
             }
           }
+          realtimeFrameCountRef.current += 1
+          realtimeSpeechFrameCountRef.current += 1
+          realtimePeakDbRef.current = Math.max(realtimePeakDbRef.current, db)
           realtimeSpeechRef.current = true
           realtimeSilenceRef.current = 0
+          realtimeLastSpeechAtRef.current = now
         } else if (realtimeSpeechRef.current) {
+          realtimeFrameCountRef.current += 1
+          realtimePeakDbRef.current = Math.max(realtimePeakDbRef.current, db)
           realtimeSilenceRef.current += (samples.length / context.sampleRate) * 1000
           if (realtimeSilenceRef.current >= 850 && !realtimeTurnSentRef.current) {
             realtimeTurnSentRef.current = true
             realtimeAsrReadyRef.current = false
-            socket.send(JSON.stringify({ type: 'end_turn', text: realtimeTranscriptRef.current }))
+            realtimeTurnSentAtRef.current = performance.now()
+            const speechStartedAt = realtimeSpeechStartedAtRef.current || realtimeTurnSentAtRef.current
+            const clientDiagnostics: VoiceTurnDiagnostics = {
+              vad_tail_ms: Math.round(performance.now() - (realtimeLastSpeechAtRef.current || performance.now())),
+              speech_ms: Math.round((realtimeLastSpeechAtRef.current || performance.now()) - speechStartedAt),
+              speech_ratio: realtimeFrameCountRef.current ? realtimeSpeechFrameCountRef.current / realtimeFrameCountRef.current : 0,
+              asr_first_partial_ms: realtimeFirstPartialAtRef.current ? Math.round(realtimeFirstPartialAtRef.current - speechStartedAt) : undefined,
+              asr_interim_count: realtimeInterimCountRef.current,
+              asr_revisions: realtimeRevisionCountRef.current,
+              input_peak_db: realtimePeakDbRef.current,
+            }
+            mergeRealtimeDiagnostics(clientDiagnostics)
+            socket.send(JSON.stringify({ type: 'end_turn', text: realtimeTranscriptRef.current, client_diagnostics: clientDiagnostics }))
             setRealtimeState('thinking')
             setRealtimeStatus('正在理解你的问题')
             realtimeSpeechRef.current = false
@@ -228,6 +299,7 @@ export default function VoicePracticePage() {
         releaseRealtimeTransport()
         const attempt = realtimeReconnectAttemptRef.current + 1
         realtimeReconnectAttemptRef.current = attempt
+        setRealtimeDiagnostics(current => ({ ...current, reconnects: (current.reconnects || 0) + 1 }))
         if (attempt > 5) {
           setRealtimeState('stopped')
           setRealtimeError('实时连接已断开，重试次数已用尽，请重新开始')
@@ -245,10 +317,22 @@ export default function VoicePracticePage() {
       socket.onmessage = event => {
         if (typeof event.data !== 'string') {
           const buffer = event.data instanceof ArrayBuffer ? event.data : null
-          if (buffer) { realtimeAudioQueueRef.current.push(buffer); flushRealtimeAudio() }
+          if (buffer) {
+            realtimeAudioQueueRef.current.push(buffer)
+            flushRealtimeAudio()
+            const outputLevel = Math.min(1, 0.18 + buffer.byteLength / 12000)
+            setRealtimeOutputLevel(outputLevel)
+            setRealtimeOutputSamples(values => [...values.slice(-35), outputLevel])
+            if (!realtimeFirstAudioRef.current) {
+              realtimeFirstAudioRef.current = true
+              const startedAt = realtimeTurnSentAtRef.current
+              if (startedAt) mergeRealtimeDiagnostics({ e2e_ms: Math.round(performance.now() - startedAt) })
+            }
+          }
           return
         }
-        const payload = JSON.parse(event.data) as { type?: string; text?: string; answer?: string; citations?: Citation[]; message?: string; code?: string; stage?: string; phase?: string; retryable?: boolean; turn?: VoicePracticeTurn; session?: VoicePracticeSession }
+        const payload = JSON.parse(event.data) as { type?: string; text?: string; answer?: string; citations?: Citation[]; message?: string; code?: string; stage?: string; phase?: string; retryable?: boolean; turn?: VoicePracticeTurn; session?: VoicePracticeSession; diagnostics?: VoiceTurnDiagnostics }
+        mergeRealtimeDiagnostics(payload.diagnostics)
         if (payload.type === 'ready') {
           realtimeReconnectAttemptRef.current = 0
           setRealtimeError('')
@@ -268,15 +352,26 @@ export default function VoicePracticePage() {
         }
         if (payload.type === 'transcript' || payload.type === 'transcript_final') {
           const text = payload.text || ''
+          if (payload.type === 'transcript') {
+            realtimeInterimCountRef.current += 1
+            if (!realtimeFirstPartialAtRef.current) realtimeFirstPartialAtRef.current = performance.now()
+            if (realtimePreviousPartialRef.current && realtimePreviousPartialRef.current !== text) realtimeRevisionCountRef.current += 1
+            realtimePreviousPartialRef.current = text
+          }
           realtimeTranscriptRef.current = text
           setRealtimeTranscript(text)
           if (text) setRealtimeError('')
         }
         if (payload.type === 'answer_token') { setRealtimeState('speaking'); setRealtimeStatus('正在语音回答'); setRealtimeAnswer(value => value + (payload.text || '')) }
         if (payload.type === 'answer_done') { setRealtimeAnswer(payload.answer || ''); setRealtimeCitations(payload.citations || []); setRealtimeState('speaking'); setRealtimeStatus('正在语音回答') }
-        if (payload.type === 'tts_start') startRealtimeAudio()
+        if (payload.type === 'tts_start') { realtimeFirstAudioRef.current = false; startRealtimeAudio() }
+        if (payload.type === 'tts_end') setRealtimeOutputLevel(0)
+        if (payload.type === 'diagnostics') mergeRealtimeDiagnostics(payload.diagnostics)
         if (payload.type === 'error') {
-          if (payload.stage === 'asr') realtimeAsrReadyRef.current = false
+          if (payload.stage === 'asr') {
+            realtimeAsrReadyRef.current = false
+            setRealtimeDiagnostics(current => ({ ...current, asr_errors: (current.asr_errors || 0) + 1 }))
+          }
           const nonRetryableCodes = new Set([
             'auth',
             'aliyun_not_configured',
@@ -336,6 +431,11 @@ export default function VoicePracticePage() {
     }
     realtimeManualStopRef.current = false
     realtimeReconnectAttemptRef.current = 0
+    setRealtimeDiagnostics({})
+    setRealtimeMicSamples([])
+    setRealtimeOutputSamples([])
+    setRealtimeMicLevel(0)
+    setRealtimeOutputLevel(0)
     realtimeSessionRef.current = active
     await openRealtime(active)
   }
@@ -516,7 +616,7 @@ export default function VoicePracticePage() {
   }
 
   return (
-    <div data-testid="voice-practice-page" style={{ padding: 16, maxWidth: 1040, margin: '0 auto' }}>
+    <div data-testid="voice-practice-page" style={{ padding: 16, maxWidth: 1180, margin: '0 auto' }}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
@@ -530,9 +630,8 @@ export default function VoicePracticePage() {
         {micDenied ? <Alert type="warning" showIcon message="需要麦克风权限才能录音。你也可以直接编辑转写文本进行练习。" /> : null}
         {realtimeError ? <Alert type="error" showIcon message={realtimeError} closable onClose={() => setRealtimeError('')} /> : null}
 
-        <Card title="实时对话" data-testid="voice-realtime-card">
+        <section data-testid="voice-realtime-card">
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Text type="secondary">持续采集麦克风，自动判断说完后回答；可以随时说话打断回答。</Text>
             <Space wrap>
               {realtimeState === 'idle' || realtimeState === 'stopped' ? (
                 <Button type="primary" icon={<AudioOutlined />} onClick={() => void startRealtime()} data-testid="voice-realtime-start">开始实时对话</Button>
@@ -543,15 +642,22 @@ export default function VoicePracticePage() {
                   <Button danger icon={<StopOutlined />} onClick={stopRealtime} data-testid="voice-realtime-stop">结束</Button>
                 </>
               ) : null}
-              <Tag icon={realtimeState === 'connecting' || realtimeState === 'thinking' ? <LoadingOutlined /> : undefined} color={realtimeState === 'listening' ? 'green' : realtimeState === 'speaking' ? 'blue' : realtimeState === 'thinking' ? 'gold' : 'default'}>
-                {realtimeStatus || (realtimeState === 'connecting' ? '连接中' : realtimeState === 'listening' ? '正在听' : realtimeState === 'thinking' ? '思考中' : realtimeState === 'speaking' ? '回答中' : realtimeState === 'paused' ? '已暂停' : '未开始')}
-              </Tag>
             </Space>
-            {realtimeTranscript ? <Paragraph style={{ margin: 0 }}><Text type="secondary">你：</Text>{realtimeTranscript}</Paragraph> : null}
-            {realtimeAnswer ? <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}><Text type="secondary">回答：</Text>{realtimeAnswer}</Paragraph> : null}
+            <VoiceRealtimeConsole
+              state={realtimeState}
+              status={realtimeStatus || (realtimeState === 'connecting' ? '连接中' : realtimeState === 'listening' ? '正在听' : realtimeState === 'thinking' ? '思考中' : realtimeState === 'speaking' ? '回答中' : realtimeState === 'paused' ? '已暂停' : '未开始')}
+              transcript={realtimeTranscript}
+              answer={realtimeAnswer}
+              micLevel={realtimeMicLevel}
+              outputLevel={realtimeOutputLevel}
+              micSamples={realtimeMicSamples}
+              outputSamples={realtimeOutputSamples}
+              diagnostics={realtimeDiagnostics}
+              recentTurns={turns}
+            />
             {realtimeCitations.length ? <Space wrap>{realtimeCitations.map((citation, index) => <Button key={citation.citation_id || index} size="small" onClick={() => setSource({ citation, index })}>[C{index + 1}] {citation.doc_name || '来源'}</Button>)}</Space> : null}
           </Space>
-        </Card>
+        </section>
 
         {!session || session.status !== 'active' ? (
           <Card title="选择练习目标" data-testid="voice-start-card">

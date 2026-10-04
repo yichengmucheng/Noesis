@@ -19,7 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 
-SCHEMA_VERSION = "app-005"
+SCHEMA_VERSION = "app-007"
 APP_DB_NAME = "product_app.sqlite"
 
 _STORES: dict[str, "AppStore"] = {}
@@ -176,6 +176,94 @@ _MIGRATIONS = (
         );
         CREATE INDEX IF NOT EXISTS idx_voice_turns_scope
             ON voice_practice_turns(owner_id, kb_id, session_id, created_at);
+        """,
+    ),
+    (
+        "app-006",
+        """
+        ALTER TABLE voice_practice_turns
+            ADD COLUMN diagnostics_json TEXT NOT NULL DEFAULT '{}';
+        """,
+    ),
+    (
+        "app-007",
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_documents (
+            document_id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            source_type TEXT NOT NULL DEFAULT '',
+            current_version_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_documents_scope
+            ON knowledge_documents(owner_id, kb_id, status, updated_at);
+        CREATE TABLE IF NOT EXISTS knowledge_versions (
+            version_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            structure_hash TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            source_updated_at TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            published_at TEXT NOT NULL DEFAULT '',
+            superseded_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_versions_document
+            ON knowledge_versions(owner_id, kb_id, document_id, created_at);
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+            stable_chunk_id TEXT NOT NULL,
+            version_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            structural_anchor TEXT NOT NULL DEFAULT '',
+            chunk_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(stable_chunk_id, version_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_version
+            ON knowledge_chunks(owner_id, kb_id, version_id, status);
+        CREATE TABLE IF NOT EXISTS knowledge_facts (
+            fact_id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            subject_id TEXT NOT NULL DEFAULT '',
+            predicate TEXT NOT NULL DEFAULT '',
+            object_id TEXT NOT NULL DEFAULT '',
+            value TEXT NOT NULL DEFAULT '',
+            source_version_id TEXT NOT NULL DEFAULT '',
+            source_chunk_id TEXT NOT NULL DEFAULT '',
+            valid_at TEXT NOT NULL DEFAULT '',
+            invalid_at TEXT NOT NULL DEFAULT '',
+            superseded_by TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'candidate',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_facts_current
+            ON knowledge_facts(owner_id, kb_id, status, valid_at, invalid_at);
+        CREATE TABLE IF NOT EXISTS knowledge_change_sets (
+            change_set_id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            kb_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            old_version_id TEXT NOT NULL DEFAULT '',
+            new_version_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'detected',
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            diff_json TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            published_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_changes_scope
+            ON knowledge_change_sets(owner_id, kb_id, created_at);
         """,
     ),
 )
@@ -1024,6 +1112,257 @@ class AppStore:
             _commit_with_retry(self._conn)
         return True
 
+    # Knowledge update records are deliberately kept separate from the legacy
+    # shell JSON.  They are scoped on every read so a future database backend
+    # can apply the same tenant boundary.
+    def register_knowledge_version(
+        self,
+        *,
+        document_id: str,
+        version_id: str,
+        owner_id: str,
+        kb_id: str,
+        display_name: str,
+        source_type: str,
+        content_hash: str,
+        structure_hash: str = "",
+        status: str = "draft",
+    ) -> dict[str, Any]:
+        now = _now()
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR IGNORE INTO knowledge_documents(
+                    document_id, owner_id, kb_id, display_name, source_type,
+                    current_version_id, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)""",
+                (document_id, owner_id, kb_id, display_name, source_type, version_id, now, now),
+            )
+            self._conn.execute(
+                """INSERT OR IGNORE INTO knowledge_versions(
+                    version_id, document_id, owner_id, kb_id, content_hash,
+                    structure_hash, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (version_id, document_id, owner_id, kb_id, content_hash, structure_hash, status, now),
+            )
+            self._conn.execute(
+                """UPDATE knowledge_documents
+                   SET display_name = ?, source_type = ?, current_version_id = ?, updated_at = ?
+                   WHERE document_id = ? AND owner_id = ? AND kb_id = ?""",
+                (display_name, source_type, version_id, now, document_id, owner_id, kb_id),
+            )
+            _commit_with_retry(self._conn)
+        return self.get_knowledge_version(version_id, owner_id, kb_id) or {}
+
+    def get_knowledge_version(
+        self, version_id: str, owner_id: str, kb_id: str
+    ) -> dict[str, Any] | None:
+        row = self._one(
+            """SELECT v.*, d.display_name, d.source_type, d.current_version_id
+               FROM knowledge_versions v JOIN knowledge_documents d ON d.document_id = v.document_id
+               WHERE v.version_id = ? AND v.owner_id = ? AND v.kb_id = ?""",
+            (version_id, owner_id, kb_id),
+        )
+        return dict(row) if row else None
+
+    def list_knowledge_versions(
+        self, document_id: str, owner_id: str, kb_id: str
+    ) -> list[dict[str, Any]]:
+        rows = self._all(
+            """SELECT * FROM knowledge_versions
+               WHERE document_id = ? AND owner_id = ? AND kb_id = ?
+               ORDER BY created_at DESC""",
+            (document_id, owner_id, kb_id),
+        )
+        return [dict(row) for row in rows]
+
+    def save_knowledge_chunks(
+        self, *, owner_id: str, kb_id: str, document_id: str, version_id: str,
+        chunks: Iterable[dict[str, Any]],
+    ) -> int:
+        rows = list(chunks)
+        with self._lock:
+            for item in rows:
+                self._conn.execute(
+                    """INSERT OR REPLACE INTO knowledge_chunks(
+                        stable_chunk_id, version_id, document_id, owner_id, kb_id,
+                        content_hash, structural_anchor, chunk_id, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        item.get("stable_chunk_id") or "",
+                        version_id,
+                        document_id,
+                        owner_id,
+                        kb_id,
+                        item.get("content_hash") or "",
+                        item.get("structural_anchor") or "",
+                        item.get("chunk_id") or "",
+                        item.get("status") or "active",
+                        _now(),
+                    ),
+                )
+            _commit_with_retry(self._conn)
+        return len(rows)
+
+    def create_knowledge_change_set(
+        self, *, owner_id: str, kb_id: str, document_id: str,
+        old_version_id: str, new_version_id: str, summary: dict[str, Any],
+        diff: list[dict[str, Any]], status: str = "detected",
+    ) -> dict[str, Any]:
+        change_set_id = uuid4().hex
+        now = _now()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO knowledge_change_sets(
+                    change_set_id, owner_id, kb_id, document_id, old_version_id,
+                    new_version_id, status, summary_json, diff_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    change_set_id, owner_id, kb_id, document_id, old_version_id,
+                    new_version_id, status, json.dumps(summary, ensure_ascii=False),
+                    json.dumps(diff, ensure_ascii=False), now,
+                ),
+            )
+            _commit_with_retry(self._conn)
+        return self.get_knowledge_change_set(change_set_id, owner_id, kb_id) or {}
+
+    def get_knowledge_change_set(
+        self, change_set_id: str, owner_id: str, kb_id: str
+    ) -> dict[str, Any] | None:
+        row = self._one(
+            """SELECT * FROM knowledge_change_sets
+               WHERE change_set_id = ? AND owner_id = ? AND kb_id = ?""",
+            (change_set_id, owner_id, kb_id),
+        )
+        if not row:
+            return None
+        item = dict(row)
+        for key, fallback in (("summary_json", {}), ("diff_json", [])):
+            try:
+                item[key.removesuffix("_json")] = json.loads(item.get(key) or json.dumps(fallback))
+            except json.JSONDecodeError:
+                item[key.removesuffix("_json")] = fallback
+            item.pop(key, None)
+        return item
+
+    def list_knowledge_change_sets(
+        self, owner_id: str, kb_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        rows = self._all(
+            """SELECT change_set_id FROM knowledge_change_sets
+               WHERE owner_id = ? AND kb_id = ? ORDER BY created_at DESC LIMIT ?""",
+            (owner_id, kb_id, max(1, min(int(limit or 50), 200))),
+        )
+        return [
+            item for row in rows
+            if (item := self.get_knowledge_change_set(str(row["change_set_id"]), owner_id, kb_id))
+        ]
+
+    def update_knowledge_change_set_status(
+        self, change_set_id: str, owner_id: str, kb_id: str, status: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            self._conn.execute(
+                """UPDATE knowledge_change_sets SET status = ?, published_at = CASE
+                   WHEN ? = 'published' THEN ? ELSE published_at END
+                   WHERE change_set_id = ? AND owner_id = ? AND kb_id = ?""",
+                (status, status, _now(), change_set_id, owner_id, kb_id),
+            )
+            _commit_with_retry(self._conn)
+        return self.get_knowledge_change_set(change_set_id, owner_id, kb_id)
+
+    def publish_knowledge_version(
+        self, document_id: str, version_id: str, owner_id: str, kb_id: str
+    ) -> bool:
+        now = _now()
+        with self._lock:
+            self._conn.execute(
+                """UPDATE knowledge_versions SET status = 'superseded', superseded_at = ?
+                   WHERE document_id = ? AND owner_id = ? AND kb_id = ?
+                     AND version_id <> ? AND status = 'published'""",
+                (now, document_id, owner_id, kb_id, version_id),
+            )
+            cursor = self._conn.execute(
+                """UPDATE knowledge_versions SET status = 'published', published_at = ?
+                   WHERE document_id = ? AND version_id = ? AND owner_id = ? AND kb_id = ?""",
+                (now, document_id, version_id, owner_id, kb_id),
+            )
+            self._conn.execute(
+                """UPDATE knowledge_documents SET current_version_id = ?, updated_at = ?
+                   WHERE document_id = ? AND owner_id = ? AND kb_id = ?""",
+                (version_id, now, document_id, owner_id, kb_id),
+            )
+            _commit_with_retry(self._conn)
+        return bool(cursor.rowcount)
+
+    def upsert_knowledge_fact(self, fact: dict[str, Any]) -> dict[str, Any]:
+        row = {
+            "fact_id": fact.get("fact_id") or uuid4().hex,
+            "owner_id": fact.get("owner_id") or "",
+            "kb_id": fact.get("kb_id") or "",
+            "subject_id": fact.get("subject_id") or "",
+            "predicate": fact.get("predicate") or "",
+            "object_id": fact.get("object_id") or "",
+            "value": fact.get("value") or "",
+            "source_version_id": fact.get("source_version_id") or "",
+            "source_chunk_id": fact.get("source_chunk_id") or "",
+            "valid_at": fact.get("valid_at") or _now(),
+            "invalid_at": fact.get("invalid_at") or "",
+            "superseded_by": fact.get("superseded_by") or "",
+            "status": fact.get("status") or "candidate",
+            "created_at": fact.get("created_at") or _now(),
+        }
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO knowledge_facts(
+                    fact_id, owner_id, kb_id, subject_id, predicate, object_id, value,
+                    source_version_id, source_chunk_id, valid_at, invalid_at,
+                    superseded_by, status, created_at
+                ) VALUES (:fact_id, :owner_id, :kb_id, :subject_id, :predicate, :object_id,
+                          :value, :source_version_id, :source_chunk_id, :valid_at,
+                          :invalid_at, :superseded_by, :status, :created_at)""",
+                row,
+            )
+            _commit_with_retry(self._conn)
+        return row
+
+    def list_current_knowledge_facts(self, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
+        rows = self._all(
+            """SELECT * FROM knowledge_facts
+               WHERE owner_id = ? AND kb_id = ? AND status = 'active'
+                 AND (invalid_at = '' OR invalid_at > ?)
+               ORDER BY valid_at DESC""",
+            (owner_id, kb_id, _now()),
+        )
+        return [dict(row) for row in rows]
+
+    def activate_knowledge_fact(self, fact: dict[str, Any]) -> dict[str, Any]:
+        """Activate a new fact and close conflicting current facts."""
+        owner_id = str(fact.get("owner_id") or "")
+        kb_id = str(fact.get("kb_id") or "")
+        subject_id = str(fact.get("subject_id") or "")
+        predicate = str(fact.get("predicate") or "")
+        object_id = str(fact.get("object_id") or "")
+        now = _now()
+        with self._lock:
+            self._conn.execute(
+                """UPDATE knowledge_facts
+                   SET status = 'superseded', invalid_at = ?, superseded_by = ?
+                   WHERE owner_id = ? AND kb_id = ? AND subject_id = ? AND predicate = ?
+                     AND status = 'active' AND (object_id <> ? OR value <> ?)""",
+                (
+                    now,
+                    str(fact.get("fact_id") or ""),
+                    owner_id,
+                    kb_id,
+                    subject_id,
+                    predicate,
+                    object_id,
+                    str(fact.get("value") or ""),
+                ),
+            )
+            _commit_with_retry(self._conn)
+        return self.upsert_knowledge_fact({**fact, "status": "active", "valid_at": fact.get("valid_at") or now})
+
     def count_documents_untouched(self) -> None:
         return None
 
@@ -1232,6 +1571,7 @@ class AppStore:
         answer: str = "",
         citations: list[dict[str, Any]] | None = None,
         memory_refs: list[dict[str, Any]] | None = None,
+        diagnostics: dict[str, Any] | None = None,
         audio_status: str = "not_requested",
         status: str = "completed",
     ) -> dict[str, Any]:
@@ -1246,6 +1586,7 @@ class AppStore:
             "answer": str(answer or "")[:16000],
             "citations_json": json.dumps(citations or [], ensure_ascii=False),
             "memory_refs_json": json.dumps(memory_refs or [], ensure_ascii=False),
+            "diagnostics_json": json.dumps(diagnostics or {}, ensure_ascii=False),
             "audio_status": audio_status or "not_requested",
             "status": status or "completed",
             "created_at": now,
@@ -1254,9 +1595,11 @@ class AppStore:
             self._conn.execute(
                 """INSERT INTO voice_practice_turns(
                     id, session_id, owner_id, kb_id, role, transcript, answer,
-                    citations_json, memory_refs_json, audio_status, status, created_at
+                    citations_json, memory_refs_json, diagnostics_json,
+                    audio_status, status, created_at
                 ) VALUES (:id, :session_id, :owner_id, :kb_id, :role, :transcript, :answer,
-                          :citations_json, :memory_refs_json, :audio_status, :status, :created_at)""",
+                          :citations_json, :memory_refs_json, :diagnostics_json,
+                          :audio_status, :status, :created_at)""",
                 row,
             )
             _commit_with_retry(self._conn)
@@ -1452,6 +1795,10 @@ class AppStore:
             memory_refs = json.loads(data.get("memory_refs_json") or "[]")
         except json.JSONDecodeError:
             memory_refs = []
+        try:
+            diagnostics = json.loads(data.get("diagnostics_json") or "{}")
+        except json.JSONDecodeError:
+            diagnostics = {}
         return {
             "id": data["id"],
             "session_id": data["session_id"],
@@ -1462,6 +1809,7 @@ class AppStore:
             "answer": data.get("answer") or "",
             "citations": citations if isinstance(citations, list) else [],
             "memory_refs": memory_refs if isinstance(memory_refs, list) else [],
+            "diagnostics": diagnostics if isinstance(diagnostics, dict) else {},
             "audio_status": data.get("audio_status") or "not_requested",
             "status": data.get("status") or "completed",
             "created_at": data.get("created_at") or "",

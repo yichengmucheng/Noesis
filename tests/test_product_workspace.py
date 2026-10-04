@@ -134,6 +134,8 @@ def test_conversation_crud_isolation_and_kb_purge(tmp_path, monkeypatch):
         "app-003",
         "app-004",
         "app-005",
+        "app-006",
+        "app-007",
     ]
     store.migrate()
     assert store.schema_versions() == [
@@ -142,6 +144,8 @@ def test_conversation_crud_isolation_and_kb_purge(tmp_path, monkeypatch):
         "app-003",
         "app-004",
         "app-005",
+        "app-006",
+        "app-007",
     ]
 
     doc_before = {"doc-keep": {"kb_id": kb_id, "display_name": "note.txt"}}

@@ -289,6 +289,15 @@ export const comparisonApi = {
 
   get: (taskId: string) =>
     http.get<any, any>(`/kb/comparison/${taskId}`),
+
+  updates: (kbId: string, limit = 50) =>
+    http.get<any, any>(`/kb/${kbId}/updates`, { params: { limit } }),
+
+  update: (kbId: string, changeSetId: string) =>
+    http.get<any, any>(`/kb/${kbId}/updates/${changeSetId}`),
+
+  publish: (kbId: string, changeSetId: string) =>
+    http.post<any, any>(`/kb/${kbId}/updates/${changeSetId}/publish`, {}),
 }
 
 // ── 审核中心 ──────────────────────────────────────────────────

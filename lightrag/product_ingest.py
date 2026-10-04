@@ -16,10 +16,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
+
 from lightrag.product_db import backoff_seconds, job_settings
 from lightrag.product_document_ir import public_location
 from lightrag.product_ids import chunk_record
 from lightrag.product_index import embed_texts, extract_and_store, write_chunk_vectors
+from lightrag.product_updates import (
+    change_summary,
+    compare_chunks,
+    decorate_chunks,
+    structure_hash,
+)
 from lightrag.product_parse import (
     ParseError,
     chunks_from_document,
@@ -255,6 +263,10 @@ def _write_records(
             "user_id": owner_id,
             "owner_id": owner_id,
             "file_path": file_path,
+            "version_id": item.get("version_id") or "",
+            "stable_chunk_id": item.get("stable_chunk_id") or "",
+            "content_hash": item.get("content_hash") or "",
+            "structural_anchor": item.get("structural_anchor") or "",
         }
         record.update(_stored_location(item))
         if item.get("parent_id"):
@@ -267,14 +279,50 @@ def _write_records(
 
 
 def _write_vectors(
-    working: Path, doc_id: str, kb_id: str, owner_id: str, chunks: list[dict[str, Any]]
+    working: Path, doc_id: str, kb_id: str, owner_id: str, chunks: list[dict[str, Any]],
+    previous_doc_id: str = "",
 ) -> None:
     from lightrag.index_manifest import save_manifest
-    from lightrag.product_storage import _kv
+    from lightrag.product_storage import _kv, _read_json
 
-    matrix = asyncio.run(
-        embed_texts([item.get("index_text") or item["content"] for item in chunks])
-    )
+    previous_vectors: dict[str, Any] = {}
+    if previous_doc_id:
+        payload = _read_json(Path(working) / "vdb_chunks.json") or {}
+        for row in payload.get("data") or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("doc_id") or "") != previous_doc_id:
+                continue
+            key = str(row.get("stable_chunk_id") or row.get("content_hash") or "")
+            vector = row.get("__vector__")
+            if key and vector is not None:
+                previous_vectors[key] = vector
+    pending = []
+    vectors: list[Any] = []
+    reused = 0
+    for item in chunks:
+        key = str(item.get("stable_chunk_id") or item.get("content_hash") or "")
+        if key in previous_vectors:
+            vectors.append(previous_vectors[key])
+            item["vector_reused"] = True
+            reused += 1
+        else:
+            pending.append(item)
+            vectors.append(None)
+    if pending:
+        matrix_pending = asyncio.run(
+            embed_texts([item.get("index_text") or item["content"] for item in pending])
+        )
+        pending_index = 0
+        for index, vector in enumerate(vectors):
+            if vector is None:
+                vectors[index] = matrix_pending[pending_index]
+                pending_index += 1
+        matrix = np.asarray(vectors, dtype=np.float32)
+    else:
+        matrix = np.asarray(vectors, dtype=np.float32)
+    if matrix.ndim == 1:
+        matrix = matrix.reshape(1, -1)
     write_chunk_vectors(working, doc_id, kb_id, owner_id, chunks, matrix)
     stored = _kv(working, "text_chunks")
     save_manifest(working, int(matrix.shape[1]), list(stored.keys()))
@@ -456,6 +504,8 @@ def run_ingestion(
                         if not fallback:
                             raise StageError("user_input", "文件内容为空") from exc
                         return fallback, None
+                    snapshot["version_id"] = document.version_id
+                    snapshot["structure_hash"] = structure_hash(document)
                     save_ir(working, document)
                     located = plain_text(document).strip()
                     if not located:
@@ -510,6 +560,11 @@ def run_ingestion(
                             chunk_size=size,
                             chunk_overlap=overlap,
                         )
+                    made = decorate_chunks(
+                        str(snapshot.get("document_id") or doc_id), made
+                    )
+                    for item in made:
+                        item["version_id"] = str(snapshot.get("version_id") or "")
                     from lightrag.chunk_hierarchy import assign_parents
                     from lightrag.product_storage import _kv, _save_kv
 
@@ -545,12 +600,71 @@ def run_ingestion(
                     data, doc_id, "chunking", [item["chunk_id"] for item in chunks]
                 )
                 save_shell(working, data)
+                try:
+                    from lightrag.product_appdb import open_appdb
+
+                    appdb = open_appdb(working)
+                    logical_document_id = str(snapshot.get("document_id") or doc_id)
+                    new_version_id = str(snapshot.get("version_id") or "")
+                    if new_version_id:
+                        appdb.register_knowledge_version(
+                            document_id=logical_document_id,
+                            version_id=new_version_id,
+                            owner_id=owner_id,
+                            kb_id=kb_id,
+                            display_name=str(job.get("file_name") or doc_id),
+                            source_type=str(getattr(parsed, "source_type", "") or ""),
+                            content_hash=str(snapshot.get("content_hash") or ""),
+                            structure_hash=str(snapshot.get("structure_hash") or ""),
+                        )
+                        appdb.save_knowledge_chunks(
+                            owner_id=owner_id,
+                            kb_id=kb_id,
+                            document_id=logical_document_id,
+                            version_id=new_version_id,
+                            chunks=chunks,
+                        )
+                        previous_doc_id = str(snapshot.get("previous_doc_id") or "")
+                        if previous_doc_id:
+                            from lightrag.product_storage import _kv
+
+                            previous_rows = [
+                                row
+                                for row in _kv(working, "text_chunks").values()
+                                if isinstance(row, dict)
+                                and str(row.get("doc_id") or row.get("full_doc_id") or "") == previous_doc_id
+                            ]
+                            diff = compare_chunks(
+                                previous_rows,
+                                chunks,
+                                old_document_id=logical_document_id,
+                                new_document_id=logical_document_id,
+                            )
+                            change_set = appdb.create_knowledge_change_set(
+                                owner_id=owner_id,
+                                kb_id=kb_id,
+                                document_id=logical_document_id,
+                                old_version_id=str(snapshot.get("previous_version_id") or ""),
+                                new_version_id=new_version_id,
+                                summary=change_summary(diff),
+                                diff=diff,
+                            )
+                            snapshot["change_set_id"] = change_set.get("change_set_id") or ""
+                except Exception as exc:
+                    logger.warning("知识版本记录写入失败，不阻断旧版入库：%s", exc)
             elif stage == "embedding":
 
                 def embed() -> None:
                     _pause(stage)
                     _maybe_fail(stage)
-                    _write_vectors(working, doc_id, kb_id, owner_id, chunks)
+                    _write_vectors(
+                        working,
+                        doc_id,
+                        kb_id,
+                        owner_id,
+                        chunks,
+                        str(snapshot.get("previous_doc_id") or ""),
+                    )
 
                 _run_bounded(stage, embed)
                 interrupted = _interrupt(store, working, inputs, job, alive)
@@ -633,6 +747,27 @@ def run_ingestion(
                     status_rows[doc_id]["status"] = "processed"
                     _save_kv(working, "doc_status", status_rows)
                 save_shell(working, data)
+                if snapshot.get("change_set_id"):
+                    try:
+                        from lightrag.product_appdb import open_appdb
+
+                        open_appdb(working).update_knowledge_change_set_status(
+                            str(snapshot["change_set_id"]), owner_id, kb_id, "published"
+                        )
+                    except Exception as exc:
+                        logger.warning("知识更新发布状态写入失败：%s", exc)
+                if snapshot.get("version_id") and snapshot.get("document_id"):
+                    try:
+                        from lightrag.product_appdb import open_appdb
+
+                        open_appdb(working).publish_knowledge_version(
+                            str(snapshot["document_id"]),
+                            str(snapshot["version_id"]),
+                            owner_id,
+                            kb_id,
+                        )
+                    except Exception as exc:
+                        logger.warning("知识版本发布状态写入失败：%s", exc)
                 return store.transition(
                     job["job_id"],
                     "succeeded",
@@ -644,6 +779,8 @@ def run_ingestion(
                     output_summary={
                         "chunk_ids": [item["chunk_id"] for item in chunks],
                         "content_hash": snapshot.get("content_hash", ""),
+                        "vectors_reused": sum(1 for item in chunks if item.get("vector_reused")),
+                        "vectors_embedded": sum(1 for item in chunks if not item.get("vector_reused")),
                     },
                 )
         except StageError as exc:

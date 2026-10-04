@@ -331,9 +331,31 @@ export interface VoicePracticeTurn {
   answer?: string
   citations?: Citation[]
   memory_refs?: { marker?: string; content?: string; memory_id?: string }[]
+  diagnostics?: VoiceTurnDiagnostics
   audio_status?: string
   status?: string
   created_at?: string
+}
+
+export interface VoiceTurnDiagnostics {
+  vad_tail_ms?: number
+  speech_ms?: number
+  speech_ratio?: number
+  input_peak_db?: number
+  asr_first_partial_ms?: number
+  asr_finalize_ms?: number
+  asr_interim_count?: number
+  asr_revisions?: number
+  asr_confidence?: number
+  retrieval_ms?: number
+  llm_ttft_ms?: number
+  llm_total_ms?: number
+  tts_ttfb_ms?: number
+  tts_total_ms?: number
+  e2e_ms?: number
+  total_ms?: number
+  asr_errors?: number
+  reconnects?: number
 }
 
 export interface SourceReaderProps {

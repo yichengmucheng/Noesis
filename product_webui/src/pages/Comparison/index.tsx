@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
-  Typography, Table, Button, Tabs, Tag, Space, Empty, Modal, Form, Select, Input, Drawer, List,
+  Typography, Table, Button, Tabs, Tag, Space, Empty, Modal, Form, Select, Input, Drawer, List, Alert,
 } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { comparisonApi, docApi } from '../../api'
@@ -37,6 +37,7 @@ function DiffList({ items }: { items: any[] }) {
 export default function ComparisonPage() {
   const { kbId } = useOutletContext<{ kbId: string }>()
   const [tasks, setTasks] = useState<any[]>([])
+  const [updates, setUpdates] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [docs, setDocs] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
@@ -46,6 +47,7 @@ export default function ComparisonPage() {
   const load = () => {
     setLoading(true)
     comparisonApi.list(kbId).then((r: any) => setTasks(r.items ?? [])).finally(() => setLoading(false))
+    comparisonApi.updates(kbId).then((r: any) => setUpdates(r.items ?? [])).catch(() => setUpdates([]))
   }
 
   useEffect(() => {
@@ -120,6 +122,19 @@ export default function ComparisonPage() {
                 { title: '新文本', dataIndex: 'new', ellipsis: true },
               ]} />
           )},
+          { key: 'updates', label: `知识更新 (${updates.length})`, children: (
+            <Table
+              rowKey="change_set_id"
+              dataSource={updates}
+              locale={{ emptyText: <Empty description="暂无自动知识更新记录" /> }}
+              columns={[
+                { title: '文档', dataIndex: 'document_id', ellipsis: true },
+                { title: '变化', render: (_: any, r: any) => `${r.summary?.changed ?? 0} 个文本块 · ${r.summary?.fact_changes ?? 0} 条事实` },
+                { title: '状态', dataIndex: 'status', render: (s: string) => <Tag color={s === 'published' ? 'green' : 'blue'}>{s === 'published' ? '已发布' : '待处理'}</Tag> },
+                { title: '操作', render: (_: any, r: any) => <Button type="link" onClick={async () => setViewing(await comparisonApi.update(kbId, r.change_set_id))}>查看更新</Button> },
+              ]}
+            />
+          )},
         ]}
       />
 
@@ -156,11 +171,34 @@ export default function ComparisonPage() {
               {viewing.doc_name_old} → {viewing.doc_name_new}
               {viewing.reason ? ` · ${viewing.reason}` : ''}
             </Paragraph>
+            {viewing.impact ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="更新影响范围"
+                description={`变化文本块 ${viewing.impact.changed_chunks ?? 0} · 新增 ${viewing.impact.added_chunks ?? 0} · 修改 ${viewing.impact.modified_chunks ?? 0} · 删除 ${viewing.impact.deleted_chunks ?? 0} · 事实 ${viewing.impact.fact_changes ?? 0} · 问答 ${viewing.impact.qa_changes ?? 0}`}
+              />
+            ) : null}
             <Tabs items={[
               { key: 'file', label: `文件差异 (${viewing.file_diffs?.length || 0})`, children: <DiffList items={viewing.file_diffs || []} /> },
               { key: 'chunk', label: `文本块 (${viewing.chunk_diffs?.length || 0})`, children: <DiffList items={viewing.chunk_diffs || []} /> },
               { key: 'qa', label: `问答 (${viewing.qa_diffs?.length || 0})`, children: <DiffList items={viewing.qa_diffs || []} /> },
+              { key: 'facts', label: `事实 (${viewing.fact_diffs?.length || 0})`, children: (
+                <List
+                  dataSource={viewing.fact_diffs || []}
+                  locale={{ emptyText: '没有实体或关系变化' }}
+                  renderItem={(item: any) => <List.Item><Space><Tag color={item.status === 'active' ? 'green' : 'orange'}>{item.type}</Tag><Text>{item.subject} {item.predicate} {item.object}</Text></Space></List.Item>}
+                />
+              )},
             ]} />
+            {viewing.change_set_id && viewing.status !== 'published' ? (
+              <Button type="primary" onClick={async () => {
+                const next = await comparisonApi.publish(kbId, viewing.change_set_id)
+                setViewing(next)
+                load()
+              }}>发布知识更新</Button>
+            ) : null}
           </>
         )}
       </Drawer>

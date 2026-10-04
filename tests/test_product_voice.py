@@ -59,6 +59,7 @@ def _client(tmp_path, monkeypatch):
 def test_voice_schema_migrates_and_isolates(tmp_path):
     store = open_appdb(tmp_path)
     assert "app-005" in store.schema_versions()
+    assert "app-006" in store.schema_versions()
     first = store.create_voice_practice_session("user-a", "kb-a", goal="interview")
     second = store.create_voice_practice_session("user-a", "kb-b")
     store.add_voice_practice_turn(
@@ -69,6 +70,7 @@ def test_voice_schema_migrates_and_isolates(tmp_path):
         answer="回答 [C1]",
         citations=[{"citation_id": "C1", "document_id": "doc-a"}],
         memory_refs=[{"marker": "M1", "content": "偏好简洁"}],
+        diagnostics={"llm_ttft_ms": 420, "tts_ttfb_ms": 180, "e2e_ms": 760},
     )
     assert (
         store.get_voice_practice_session(first["id"], "user-a", "kb-a")["id"]
@@ -76,7 +78,13 @@ def test_voice_schema_migrates_and_isolates(tmp_path):
     )
     assert store.get_voice_practice_session(first["id"], "user-b", "kb-a") is None
     assert store.get_voice_practice_session(first["id"], "user-a", "kb-b") is None
-    assert len(store.list_voice_practice_turns(first["id"], "user-a", "kb-a")) == 1
+    turns = store.list_voice_practice_turns(first["id"], "user-a", "kb-a")
+    assert len(turns) == 1
+    assert turns[0]["diagnostics"] == {
+        "llm_ttft_ms": 420,
+        "tts_ttfb_ms": 180,
+        "e2e_ms": 760,
+    }
     assert store.update_voice_practice_turn_audio("missing", "user-a", "ready") is None
     assert (
         store.update_voice_practice_turn_audio(

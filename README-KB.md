@@ -32,6 +32,26 @@ Qwen2.5-7B 实体关系抽取（领域 ontology：设备/部件/故障定义/一
 
 界面上的能力、索引状态和检索诊断显示的是当前进程配置和索引清单里的模型，不使用代码里的固定模型名。嵌入模型、维度、instruction 或切块版本与清单不一致时，系统会停止查询旧向量并要求重建索引。
 
+### 知识更新与增量索引
+
+上传资料会按 `document_id`（逻辑文档）和 `version_id`（内容版本）登记。系统计算
+`content_hash` 和 `structure_hash`，为文本块生成稳定 `stable_chunk_id`，自动识别新增、修改、删除、移动和未变化内容。
+重复内容不会重复入库；新版本只对变化文本块重新生成向量，未变化文本块复用已有向量。
+
+知识比对页现在还会展示实体/关系事实变化和影响范围。关系事实保留
+`valid_at`、`invalid_at`、`source_version_id` 与 `superseded_by`，当前问答只使用有效事实，历史版本仍可追溯。
+更新记录写入 `product_app.sqlite`，并提供以下接口：
+
+```text
+GET  /api/v1/kb/{kb_id}/updates
+GET  /api/v1/kb/{kb_id}/updates/{change_set_id}
+POST /api/v1/kb/{kb_id}/updates/{change_set_id}/publish
+GET  /api/v1/documents/{doc_id}/versions?kb_id={kb_id}
+```
+
+个人知识库默认自动发布；企业部署可以在变更集处增加审核、审批和回滚策略。`product_app.sqlite`
+必须和 `rag_storage/`、原始文件目录一起备份。
+
 > ⚠️ 密钥安全：`.env` 含真实 API Key。如需分发，先轮换密钥再用 `env.example` 重新生成。
 
 ## 3. 启动 / 停止
@@ -311,3 +331,7 @@ python -m lightrag.product_storage_check --working-dir data/rag_storage --repair
 TTS provider 必须显式选择。默认 `TTS_PROVIDER=siliconflow` 使用现有 OpenAI-compatible HTTP 流；阿里 NLS 语音合成需要在控制台开通对应能力并设置 `TTS_PROVIDER=aliyun_nls`、`ALIYUN_TTS_APP_KEY`（或 token）和可用音色 `ALIYUN_TTS_VOICE`。ASR 已配置不代表 TTS 已开通，未配置时页面会显示服务错误，不会播放空音频。
 
 WebSocket 断线会在浏览器端以 1、2、4、8 秒退避重连，最多 5 次，并复用当前练习会话；用户主动结束或取消后不会自动重连。浏览器需要允许麦克风和 WebSocket 连接，生产环境应使用 HTTPS/WSS。
+
+语音页的通话诊断使用真实事件计时：VAD 断句为最后一个语音帧到提交回合，ASR 定稿为服务端收到回合结束到 NLS 返回最终文本，资料检索为回合开始到证据元数据就绪，LLM 首响为回合开始到首个回答 token，TTS 首包为提交合成文本到首个音频字节，端到端为提交回合到浏览器收到首个音频字节。诊断数据随练习回合写入 `voice_practice_turns.diagnostics_json`，不保存原始麦克风音频。
+
+在线 ASR 面板展示首个增量耗时、增量修订率、转写稳定度、输入峰值、识别失败和断线恢复次数。这些指标用于发现弱音、噪声、网络和服务稳定性问题，不能代替准确率评测。CER/WER 必须使用包含音频与人工标注文本的固定测试集离线计算；没有标注集时界面显示“待标注评测”，不根据 ASR 自身置信度伪造准确率。

@@ -1,0 +1,142 @@
+.voice-console {
+  overflow: hidden;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.voice-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.voice-console-subtitle { margin-left: 10px; }
+
+.voice-latency-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 160px)) minmax(220px, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.voice-latency-strip .ant-statistic-content { font-size: 20px; }
+.voice-latency-strip .ant-statistic-content-value { white-space: nowrap; }
+.voice-bottleneck { justify-self: end; text-align: right; }
+
+.voice-channel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.voice-channel {
+  min-width: 0;
+  padding: 18px;
+  transition: background-color 160ms ease;
+}
+
+.voice-channel + .voice-channel { border-left: 1px solid #edf0f3; }
+.voice-channel-input.is-active { background: #f3fbf8; }
+.voice-channel-output.is-active { background: #fff6f8; }
+
+.voice-channel-heading,
+.voice-meter-row,
+.voice-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voice-meter-row { margin: 18px 0 12px; }
+.voice-meter-row .ant-progress { flex: 1; margin: 0; }
+.voice-meter-row .ant-typography { flex: 0 0 auto; }
+
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 76px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid #e8ecef;
+  background: #fafbfc;
+}
+
+.voice-waveform span {
+  flex: 1 1 0;
+  min-width: 2px;
+  transition: height 80ms linear;
+}
+
+.voice-waveform-input span { background: #16a085; }
+.voice-waveform-output span { background: #df6b83; }
+
+.voice-live-copy {
+  min-height: 104px;
+  margin-top: 14px;
+  padding: 12px;
+  border-left: 3px solid #16a085;
+  background: rgba(255, 255, 255, .78);
+}
+
+.voice-channel-output .voice-live-copy { border-left-color: #df6b83; }
+.voice-live-copy .ant-typography { margin: 4px 0 0; white-space: pre-wrap; }
+
+.voice-diagnostics { border-top: 1px solid #edf0f3; }
+.voice-diagnostics .ant-collapse-header { padding-inline: 18px !important; }
+.voice-diagnostics .ant-collapse-content-box { padding: 0 18px 18px !important; }
+
+.voice-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  border: 1px solid #e5e9ed;
+}
+
+.voice-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.voice-stage + .voice-stage { border-left: 1px solid #e5e9ed; }
+.voice-stage strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+
+.voice-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.voice-quality-grid .ant-statistic-content { font-size: 16px; }
+.voice-quality-grid .ant-statistic-content-value { white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .voice-latency-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .voice-bottleneck { grid-column: 1 / -1; justify-self: start; text-align: left; }
+  .voice-stage-grid, .voice-quality-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .voice-stage:nth-child(4) { border-left: 0; }
+  .voice-stage:nth-child(n + 4) { border-top: 1px solid #e5e9ed; }
+}
+
+@media (max-width: 600px) {
+  .voice-console-header { align-items: flex-start; }
+  .voice-console-subtitle { display: block; margin: 4px 0 0; }
+  .voice-latency-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px; }
+  .voice-latency-strip .ant-statistic-title { min-height: 42px; }
+  .voice-latency-strip .ant-statistic-content { font-size: 15px; }
+  .voice-channel-grid { grid-template-columns: 1fr; }
+  .voice-channel + .voice-channel { border-top: 1px solid #edf0f3; border-left: 0; }
+  .voice-stage-grid, .voice-quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .voice-stage:nth-child(3), .voice-stage:nth-child(5) { border-left: 0; }
+  .voice-stage:nth-child(n + 3) { border-top: 1px solid #e5e9ed; }
+}

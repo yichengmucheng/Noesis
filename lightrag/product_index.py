@@ -14,7 +14,9 @@ from typing import Any, Awaitable, Callable
 
 import numpy as np
 
+from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.product_ids import check_bundle, entity_record, relation_record
+from lightrag.product_updates import current_time
 
 EmbedFunc = Callable[[list[str]], Awaitable[Any]]
 LlmFunc = Callable[..., Awaitable[Any]]
@@ -83,6 +85,10 @@ def write_chunk_vectors(
             "content": item["content"],
             "parent_id": item.get("parent_id") or "",
             "index_text": item.get("index_text") or "",
+            "version_id": item.get("version_id") or "",
+            "stable_chunk_id": item.get("stable_chunk_id") or "",
+            "content_hash": item.get("content_hash") or "",
+            "structural_anchor": item.get("structural_anchor") or "",
         }
         if item.get("evidence_ids"):
             row["evidence_ids"] = ",".join(str(part) for part in item["evidence_ids"])
@@ -111,6 +117,7 @@ async def extract_and_store(
     from lightrag.operate import extract_entities
 
     runtime = current_runtime()
+    version_id = str(chunks[0].get("version_id") or "")
     chunk_map = {
         item["chunk_id"]: {
             "content": item["content"],
@@ -154,6 +161,9 @@ async def extract_and_store(
                 source,
                 doc_id,
             )
+            record["source_version_id"] = version_id
+            record["valid_at"] = current_time()
+            record["invalid_at"] = ""
             if record["entity_id"] in seen_entities:
                 continue
             seen_entities.add(record["entity_id"])
@@ -191,10 +201,35 @@ async def extract_and_store(
                     doc_id,
                 )
             )
+            relations[-1]["source_version_id"] = version_id
+            relations[-1]["valid_at"] = current_time()
+            relations[-1]["invalid_at"] = ""
     if not entities:
         return
     check_bundle([*chunks, *entities, *relations])
     _write_graph(Path(working), entities, relations)
+    try:
+        from lightrag.product_appdb import open_appdb
+
+        appdb = open_appdb(Path(working))
+        for relation in relations:
+            appdb.activate_knowledge_fact(
+                {
+                    "fact_id": relation["relation_id"],
+                    "owner_id": owner_id,
+                    "kb_id": kb_id,
+                    "subject_id": relation["src_entity_id"],
+                    "predicate": relation["relation_type"],
+                    "object_id": relation["tgt_entity_id"],
+                    "source_version_id": relation.get("source_version_id") or version_id,
+                    "source_chunk_id": relation.get("source_id") or "",
+                    "valid_at": relation.get("valid_at") or "",
+                }
+            )
+    except Exception:
+        # The graph/vector transaction remains authoritative for legacy stores;
+        # app database facts are an additional audit index.
+        pass
     await _write_graph_vectors(
         Path(working), doc_id, kb_id, owner_id, entities, relations
     )
@@ -292,6 +327,9 @@ def _write_graph(
             merged["source_id"] = source
             merged["doc_id"] = doc
             merged["kb_id"] = _merge_values(current.get("kb_id"), item.get("kb_id"))
+            for key in ("source_version_id", "valid_at", "invalid_at", "superseded_by"):
+                if item.get(key) is not None:
+                    merged[key] = item.get(key) or current.get(key) or ""
             if current.get("file_path") or item.get("file_path"):
                 merged["file_path"] = _merge_values(
                     current.get("file_path"), item.get("file_path")
@@ -300,6 +338,18 @@ def _write_graph(
         for item in relations:
             src = item["src_entity_id"]
             tgt = item["tgt_entity_id"]
+            # Preserve conflicting historical edges, but mark them inactive so
+            # current retrieval can ignore them without losing auditability.
+            for old_src, old_tgt, old_attrs in list(graph.edges(data=True)):
+                if old_src != src or old_tgt == tgt:
+                    continue
+                old_type = str(old_attrs.get("relation_type") or old_attrs.get("keywords") or "")
+                if old_type.split(GRAPH_FIELD_SEP)[0] != str(item.get("relation_type") or ""):
+                    continue
+                old_attrs["invalid_at"] = current_time()
+                old_attrs["status"] = "superseded"
+                old_attrs["superseded_by"] = item.get("relation_id") or ""
+                graph.edges[old_src, old_tgt].update(old_attrs)
             current = dict(graph.edges[src, tgt]) if graph.has_edge(src, tgt) else {}
             source, doc = _merge_evidence(
                 current.get("source_id"),
@@ -311,6 +361,9 @@ def _write_graph(
             merged["source_id"] = source
             merged["doc_id"] = doc
             merged["kb_id"] = _merge_values(current.get("kb_id"), item.get("kb_id"))
+            for key in ("source_version_id", "valid_at", "invalid_at", "superseded_by"):
+                if item.get(key) is not None:
+                    merged[key] = item.get(key) or current.get(key) or ""
             graph.add_edge(src, tgt, **merged)
 
     rewrite_graph(path, editor)
@@ -358,6 +411,9 @@ async def _write_graph_vectors(
                     "entity_name": item["name"],
                     "source_id": item["source_id"],
                     "content": item["name"],
+                    "source_version_id": item.get("source_version_id") or "",
+                    "valid_at": item.get("valid_at") or "",
+                    "invalid_at": item.get("invalid_at") or "",
                 },
             )
             for item in entities
@@ -375,6 +431,9 @@ async def _write_graph_vectors(
                     "tgt_id": item["tgt_entity_id"],
                     "source_id": item["source_id"],
                     "content": item["relation_type"],
+                    "source_version_id": item.get("source_version_id") or "",
+                    "valid_at": item.get("valid_at") or "",
+                    "invalid_at": item.get("invalid_at") or "",
                 },
             )
             for item in relations

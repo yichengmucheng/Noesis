@@ -885,6 +885,13 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("nav-voice").wait_for()
             page.get_by_test_id("nav-voice").click()
             page.get_by_test_id("voice-practice-page").wait_for()
+            page.get_by_test_id("voice-realtime-console").wait_for()
+            page.get_by_test_id("voice-latency-strip").wait_for()
+            page.get_by_text("麦克风输入").wait_for()
+            page.get_by_text("TTS 输出").wait_for()
+            input_box = page.locator(".voice-channel-input").bounding_box()
+            output_box = page.locator(".voice-channel-output").bounding_box()
+            assert input_box and output_box and output_box["x"] > input_box["x"]
             page.get_by_test_id("voice-start").click()
             page.get_by_test_id("voice-session").wait_for()
             page.get_by_test_id("voice-record").click()
@@ -897,6 +904,9 @@ def test_product_navigation_account_jobs_chat(tmp_path):
             page.get_by_test_id("voice-finish").click()
             page.get_by_text("练习已保存").wait_for()
             page.set_viewport_size({"width": 390, "height": 844})
+            input_box = page.locator(".voice-channel-input").bounding_box()
+            output_box = page.locator(".voice-channel-output").bounding_box()
+            assert input_box and output_box and output_box["y"] > input_box["y"]
             with page.expect_response(
                 lambda response: "/voice/practice/sessions/voice-1" in response.url
             ) as history_detail:

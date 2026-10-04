@@ -334,13 +334,17 @@ def parse_transcriber_event(raw: str | bytes) -> dict[str, Any] | None:
         text = str(payload.get("result") or "").strip()
         if not text:
             return None
-        return {
+        result = {
             "type": "transcript",
             "text": text,
             "final": name == "SentenceEnd",
             "sentence_id": payload.get("sentence_id"),
             "event": name,
         }
+        confidence = payload.get("confidence")
+        if isinstance(confidence, (int, float)):
+            result["confidence"] = float(confidence)
+        return result
     if name == "TranscriptionStarted":
         return {"type": "provider_ready", "task_id": header.get("task_id")}
     if name in {"TranscriptionCompleted", "TaskFailed", "TranscriptionFailed"}:

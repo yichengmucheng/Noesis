@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import difflib
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -929,59 +930,48 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         old_text = "\n".join(chunk["content"] for chunk in old_chunks)
         new_text = "\n".join(chunk["content"] for chunk in new_chunks)
         file_diffs = _text_diffs(old_text, new_text, ignore_ws, mark_numbers)
+        from lightrag.product_updates import change_summary, compare_chunks
+
+        matched_chunks = compare_chunks(
+            old_chunks,
+            new_chunks,
+            old_document_id=str(old_doc.get("id") or body.doc_id_old),
+            new_document_id=str(new_doc.get("id") or body.doc_id_new),
+        )
+        type_labels = {
+            "added": "新增",
+            "modified": "修改",
+            "deleted": "删除",
+            "moved": "移动",
+            "unchanged": "相同",
+        }
         chunk_diffs = []
-        shared = min(len(old_chunks), len(new_chunks))
-        for index in range(shared):
-            left = old_chunks[index]["content"]
-            right = new_chunks[index]["content"]
-            same = left.strip() == right.strip() or (
-                ignore_ws and re.sub(r"\s+", "", left) == re.sub(r"\s+", "", right)
-            )
-            if same:
-                if only_changes:
-                    continue
-                chunk_diffs.append(
-                    {
-                        "type": "相同",
-                        "index": index + 1,
-                        "old": _clean_text(left, 240),
-                        "new": _clean_text(right, 240),
-                        "severity": "低",
-                    }
-                )
+        for match in matched_chunks:
+            if only_changes and match["type"] == "unchanged":
                 continue
+            old_item = match.get("old") or {}
+            new_item = match.get("new") or {}
+            left = old_item.get("content") or old_item.get("excerpt") or ""
+            right = new_item.get("content") or new_item.get("excerpt") or ""
             chunk_diffs.append(
                 {
-                    "type": "修改",
-                    "index": index + 1,
+                    "type": type_labels.get(match["type"], match["type"]),
+                    "change_type": match["type"],
+                    "index": match.get("new_index") or match.get("old_index"),
+                    "old_index": match.get("old_index"),
+                    "new_index": match.get("new_index"),
+                    "stable_chunk_id": match.get("stable_chunk_id") or "",
+                    "old_anchor": old_item.get("structural_anchor") or "",
+                    "new_anchor": new_item.get("structural_anchor") or "",
                     "old": _clean_text(left, 240),
                     "new": _clean_text(right, 240),
-                    "severity": "高"
-                    if mark_numbers and _numbers_changed(left, right)
-                    else "中",
+                    "severity": "低"
+                    if match["type"] == "unchanged"
+                    else ("高" if mark_numbers and _numbers_changed(left, right) else "中"),
                 }
             )
-        for chunk in old_chunks[shared:]:
-            chunk_diffs.append(
-                {
-                    "type": "删除",
-                    "index": chunk["index"],
-                    "old": chunk["excerpt"],
-                    "new": "",
-                    "severity": "中",
-                }
-            )
-        for chunk in new_chunks[shared:]:
-            chunk_diffs.append(
-                {
-                    "type": "新增",
-                    "index": chunk["index"],
-                    "old": "",
-                    "new": chunk["excerpt"],
-                    "severity": "中",
-                }
-            )
-        chunk_diffs = chunk_diffs[:40]
+        chunk_diffs = chunk_diffs[:80]
+        chunk_summary = change_summary(matched_chunks)
 
         scoped_pairs = [item for item in qa_pairs if item.get("kb_id") == body.kb_id]
         old_qa = [
@@ -1064,6 +1054,47 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         "severity": diff["severity"],
                     }
                 )
+        fact_diffs: list[dict[str, Any]] = []
+        try:
+            import networkx as nx
+            from lightrag.product_scope import split_values
+
+            graph_path = Path(rag.working_dir) / "graph_chunk_entity_relation.graphml"
+            graph = nx.read_graphml(graph_path) if graph_path.exists() else nx.Graph()
+            old_ids = {str(item.get("chunk_id") or "") for item in old_chunks}
+            new_ids = {str(item.get("chunk_id") or "") for item in new_chunks}
+
+            def mentions(attrs: dict[str, Any], ids: set[str]) -> bool:
+                return bool(set(split_values(attrs.get("source_id"))) & ids)
+
+            def facts(ids: set[str]) -> set[tuple[str, str, str]]:
+                names = {
+                    str(node_id): str(attrs.get("entity_name") or attrs.get("name") or node_id)
+                    for node_id, attrs in graph.nodes(data=True)
+                    if mentions(attrs, ids)
+                }
+                found: set[tuple[str, str, str]] = set()
+                for source, target, attrs in graph.edges(data=True):
+                    if mentions(attrs, ids):
+                        found.add((names.get(str(source), str(source)), str(attrs.get("keywords") or attrs.get("relation_type") or "关系"), names.get(str(target), str(target))))
+                return found
+
+            old_facts = facts(old_ids)
+            new_facts = facts(new_ids)
+            for fact in sorted(new_facts - old_facts):
+                fact_diffs.append({"type": "新增事实", "subject": fact[0], "predicate": fact[1], "object": fact[2], "status": "active"})
+            for fact in sorted(old_facts - new_facts):
+                fact_diffs.append({"type": "失效事实", "subject": fact[0], "predicate": fact[1], "object": fact[2], "status": "superseded"})
+        except Exception:
+            fact_diffs = []
+        impact = {
+            "changed_chunks": chunk_summary.get("changed", 0),
+            "added_chunks": chunk_summary.get("added", 0),
+            "modified_chunks": chunk_summary.get("modified", 0) + chunk_summary.get("moved", 0),
+            "deleted_chunks": chunk_summary.get("deleted", 0),
+            "fact_changes": len(fact_diffs),
+            "qa_changes": len(qa_diffs),
+        }
         return {
             "task_id": uuid4().hex,
             "kb_id": body.kb_id,
@@ -1079,9 +1110,13 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 "file_changes": len(file_diffs),
                 "chunk_changes": len(chunk_diffs),
                 "qa_changes": len(qa_diffs),
+                **chunk_summary,
+                "fact_changes": len(fact_diffs),
             },
+            "impact": impact,
             "file_diffs": file_diffs,
             "chunk_diffs": chunk_diffs,
+            "fact_diffs": fact_diffs[:80],
             "qa_diffs": qa_diffs[:40],
         }
 
@@ -1125,6 +1160,65 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 _find_kb(data, str(row.get("kb_id") or ""))
                 return row
         raise HTTPException(status_code=404, detail="比对任务不存在")
+
+    @router.get("/documents/{doc_id}/versions")
+    async def list_document_versions(doc_id: str, kb_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        row = (data.get("doc_index") or {}).get(doc_id) or {}
+        if row.get("kb_id") != kb_id or row.get("owner_id") not in {"", actor_id()}:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        logical_id = str(row.get("document_id") or doc_id)
+        from lightrag.product_appdb import open_appdb
+
+        return {
+            "document_id": logical_id,
+            "current_version_id": str(row.get("version_id") or ""),
+            "items": open_appdb(Path(rag.working_dir)).list_knowledge_versions(
+                logical_id, actor_id(), kb_id
+            ),
+        }
+
+    @router.get("/kb/{kb_id}/updates")
+    async def list_knowledge_updates(kb_id: str, limit: int = 50):
+        data = await _read()
+        _find_kb(data, kb_id)
+        from lightrag.product_appdb import open_appdb
+
+        return {
+            "items": open_appdb(Path(rag.working_dir)).list_knowledge_change_sets(
+                actor_id(), kb_id, limit
+            )
+        }
+
+    @router.get("/kb/{kb_id}/updates/{change_set_id}")
+    async def get_knowledge_update(kb_id: str, change_set_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        from lightrag.product_appdb import open_appdb
+
+        item = open_appdb(Path(rag.working_dir)).get_knowledge_change_set(
+            change_set_id, actor_id(), kb_id
+        )
+        if item is None:
+            raise HTTPException(status_code=404, detail="知识更新不存在")
+        return item
+
+    @router.post("/kb/{kb_id}/updates/{change_set_id}/publish")
+    async def publish_knowledge_update(kb_id: str, change_set_id: str):
+        data = await _read()
+        _find_kb(data, kb_id)
+        from lightrag.product_appdb import open_appdb
+
+        appdb = open_appdb(Path(rag.working_dir))
+        item = appdb.get_knowledge_change_set(change_set_id, actor_id(), kb_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="知识更新不存在")
+        if item.get("status") not in {"detected", "reviewing", "approved", "published"}:
+            raise HTTPException(status_code=409, detail="当前更新状态不允许发布")
+        return appdb.update_knowledge_change_set_status(
+            change_set_id, actor_id(), kb_id, "published"
+        )
 
     def _audit_item(
         data: dict[str, Any],
@@ -1770,6 +1864,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     ):
         from lightrag.product_db import public_job
         from lightrag.product_ingest import content_key
+        from lightrag.product_updates import content_hash as update_content_hash, version_id as update_version_id
         from lightrag.product_uploads import allocate_upload
 
         fresh = await _read()
@@ -1801,10 +1896,31 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             view = public_job(existing)
             view["message"] = "相同文件已有任务"
             return view
+        payload_hash = update_content_hash(payload)
+        payload_version_id = update_version_id(payload)
         try:
-            allocated = allocate_upload(data, actor_id(), kb_id, safe_name)
+            allocated = allocate_upload(
+                data,
+                actor_id(),
+                kb_id,
+                safe_name,
+                content_hash=payload_hash,
+                version_id=payload_version_id,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if allocated.get("duplicate"):
+            existing_job = store.latest_for_doc(actor_id(), str(allocated.get("doc_id") or ""))
+            view = public_job(existing_job) if existing_job else {
+                "job_id": "",
+                "job_type": "ingestion",
+                "status": "succeeded",
+                "doc_id": allocated.get("doc_id") or "",
+                "kb_id": kb_id,
+            }
+            view["message"] = "文件内容未变化，继续使用现有版本"
+            view["version_id"] = allocated.get("version_id") or ""
+            return view
         allocated["status"] = "queued"
         dest = input_dir / allocated["storage_key"]
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1834,6 +1950,18 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     "owner_id": allocated["owner_id"],
                     "storage_key": allocated["storage_key"],
                     "content_hash": idempotency.rsplit(":", 1)[-1],
+                    "version_id": payload_version_id,
+                    "document_id": allocated.get("document_id") or allocated["doc_id"],
+                    "previous_doc_id": allocated.get("previous_doc_id") or "",
+                    "previous_version_id": next(
+                        (
+                            str(item.get("version_id") or "")
+                            for item in (fresh.get("doc_index") or {}).values()
+                            if isinstance(item, dict)
+                            and item.get("doc_id") == allocated.get("previous_doc_id")
+                        ),
+                        "",
+                    ),
                     "strategy": strategy,
                     "chunk_size": max(1, int(chunk_size or 512)),
                     "chunk_overlap": max(0, int(chunk_overlap or 0)),
@@ -2531,6 +2659,31 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         kb_id = ""
         session: dict[str, Any] = {}
 
+        def elapsed_ms(started_at: float) -> int:
+            return max(
+                0, round((asyncio.get_running_loop().time() - started_at) * 1000)
+            )
+
+        def client_diagnostics(value: Any) -> dict[str, float | int]:
+            if not isinstance(value, dict):
+                return {}
+            allowed = {
+                "vad_tail_ms",
+                "speech_ms",
+                "speech_ratio",
+                "asr_first_partial_ms",
+                "asr_interim_count",
+                "asr_revisions",
+                "input_peak_db",
+            }
+            result: dict[str, float | int] = {}
+            for key in allowed:
+                raw = value.get(key)
+                if not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+                    continue
+                result[key] = round(max(-120.0, min(float(raw), 3_600_000.0)), 3)
+            return result
+
         def websocket_user(data: dict[str, Any]) -> dict[str, Any]:
             if not product_auth_enabled():
                 return local_owner_view()
@@ -2592,9 +2745,17 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     if not event:
                         continue
                     if event.get("type") == "transcript":
+                        previous = str(state.get("text") or "")
                         state["text"] = str(event.get("text") or "")
+                        state["interim_count"] = (
+                            int(state.get("interim_count") or 0) + 1
+                        )
+                        if previous and previous != state["text"]:
+                            state["revisions"] = int(state.get("revisions") or 0) + 1
                         if event.get("final"):
                             state["final"] = state["text"]
+                            if isinstance(event.get("confidence"), (int, float)):
+                                state["confidence"] = float(event["confidence"])
                         await send(event)
                     elif event.get("type") == "provider_ready":
                         await send({"type": "asr_ready"})
@@ -2627,7 +2788,13 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             nonlocal provider, provider_task, provider_state
             config = AliyunNlsConfig.from_env()
             provider = await open_aliyun_transcriber(config)
-            provider_state = {"text": "", "final": "", "ready": True}
+            provider_state = {
+                "text": "",
+                "final": "",
+                "ready": True,
+                "interim_count": 0,
+                "revisions": 0,
+            }
             provider_task = asyncio.create_task(
                 provider_reader(provider[0], provider_state)
             )
@@ -2647,7 +2814,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             with contextlib.suppress(Exception):
                 await send({"type": "answer_cancelled", "reason": reason})
 
-        async def speak_local_reply(text: str) -> None:
+        async def speak_local_reply(
+            text: str, turn_started_at: float, diagnostics: dict[str, Any]
+        ) -> dict[str, Any]:
             await send(
                 {
                     "type": "answer_done",
@@ -2658,14 +2827,37 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 }
             )
             try:
-                await send({"type": "tts_start", "purpose": "local_reply"})
+                tts_started_at = asyncio.get_running_loop().time()
+                first_chunk = True
                 async for chunk in stream_speech(text):
+                    if first_chunk:
+                        first_chunk = False
+                        diagnostics["tts_ttfb_ms"] = elapsed_ms(tts_started_at)
+                        diagnostics["e2e_ms"] = elapsed_ms(turn_started_at)
+                        await send(
+                            {
+                                "type": "tts_start",
+                                "purpose": "local_reply",
+                                "diagnostics": diagnostics,
+                            }
+                        )
                     await websocket.send_bytes(chunk)
-                await send({"type": "tts_end", "purpose": "local_reply"})
+                diagnostics["tts_total_ms"] = elapsed_ms(tts_started_at)
+                diagnostics["total_ms"] = elapsed_ms(turn_started_at)
+                await send(
+                    {
+                        "type": "tts_end",
+                        "purpose": "local_reply",
+                        "diagnostics": diagnostics,
+                    }
+                )
             except Exception as exc:
                 await send({"type": "error", "stage": "tts", "message": str(exc)[:240]})
+            return diagnostics
 
-        async def answer_turn(transcript: str) -> None:
+        async def answer_turn(
+            transcript: str, turn_started_at: float, diagnostics: dict[str, Any]
+        ) -> None:
             nonlocal tts_task
             body_for_chat = ChatBody(
                 query=transcript,
@@ -2680,20 +2872,40 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             tts_queue: asyncio.Queue[str | None] = asyncio.Queue()
             tts_error_sent = False
             tts_started = False
+            tts_requested_at: float | None = None
 
             async def tts_worker() -> None:
-                nonlocal tts_error_sent, tts_started
+                nonlocal tts_error_sent, tts_started, tts_requested_at
                 while True:
                     text = await tts_queue.get()
                     try:
                         if text is None:
                             if tts_started:
-                                await send({"type": "tts_end"})
+                                diagnostics["tts_total_ms"] = elapsed_ms(
+                                    tts_requested_at or turn_started_at
+                                )
+                                await send(
+                                    {
+                                        "type": "tts_end",
+                                        "diagnostics": diagnostics,
+                                    }
+                                )
                             return
-                        if not tts_started:
-                            tts_started = True
-                            await send({"type": "tts_start"})
+                        if tts_requested_at is None:
+                            tts_requested_at = asyncio.get_running_loop().time()
                         async for chunk in stream_speech(text):
+                            if not tts_started:
+                                tts_started = True
+                                diagnostics["tts_ttfb_ms"] = elapsed_ms(
+                                    tts_requested_at
+                                )
+                                diagnostics["e2e_ms"] = elapsed_ms(turn_started_at)
+                                await send(
+                                    {
+                                        "type": "tts_start",
+                                        "diagnostics": diagnostics,
+                                    }
+                                )
                             await websocket.send_bytes(chunk)
                     except asyncio.CancelledError:
                         raise
@@ -2721,6 +2933,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
             await tts_queue.put(_voice_thinking_ack(transcript))
             sentence_buffer = ""
             answer_text = ""
+            first_answer_token = True
             citations: list[dict[str, Any]] = []
             memories: list[dict[str, Any]] = []
             try:
@@ -2728,6 +2941,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     event_type = event.get("type")
                     if event_type == "meta":
                         citations = list(event.get("citations") or [])
+                        diagnostics["retrieval_ms"] = elapsed_ms(turn_started_at)
                         await send(
                             {
                                 "type": "answer_status",
@@ -2737,6 +2951,12 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         )
                     elif event_type == "token":
                         text = str(event.get("text") or "")
+                        if first_answer_token and text:
+                            first_answer_token = False
+                            diagnostics["llm_ttft_ms"] = elapsed_ms(turn_started_at)
+                            await send(
+                                {"type": "diagnostics", "diagnostics": diagnostics}
+                            )
                         answer_text += text
                         await send(
                             {
@@ -2755,6 +2975,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                             if segment:
                                 await tts_queue.put(segment)
                     elif event_type == "done":
+                        diagnostics["llm_total_ms"] = elapsed_ms(turn_started_at)
                         answer_text = str(event.get("answer") or answer_text)
                         citations = list(event.get("citations") or citations)
                         memories = list(event.get("memories") or [])
@@ -2785,6 +3006,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                 await tts_queue.join()
                 await tts_queue.put(None)
                 await tts_task
+                diagnostics["total_ms"] = elapsed_ms(turn_started_at)
                 app = _app()
                 turn = app.add_voice_practice_turn(
                     session_id=session_id,
@@ -2794,6 +3016,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     answer=answer_text,
                     citations=citations,
                     memory_refs=memories,
+                    diagnostics=diagnostics,
                     status="completed" if answer_text else "failed",
                 )
                 await send(
@@ -2811,6 +3034,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         owner_id=actor_id(),
                         kb_id=kb_id,
                         transcript=transcript,
+                        diagnostics=diagnostics,
                         status="cancelled",
                     )
                 raise
@@ -2917,7 +3141,24 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     await send({"type": "resumed"})
                     continue
                 if command_type == "end_turn":
+                    turn_started_at = asyncio.get_running_loop().time()
+                    diagnostics: dict[str, Any] = client_diagnostics(
+                        command.get("client_diagnostics")
+                    )
                     state = await stop_provider()
+                    diagnostics["asr_finalize_ms"] = elapsed_ms(turn_started_at)
+                    diagnostics["asr_interim_count"] = int(
+                        diagnostics.get("asr_interim_count")
+                        or state.get("interim_count")
+                        or 0
+                    )
+                    diagnostics["asr_revisions"] = int(
+                        diagnostics.get("asr_revisions") or state.get("revisions") or 0
+                    )
+                    if isinstance(state.get("confidence"), (int, float)):
+                        diagnostics["asr_confidence"] = round(
+                            float(state["confidence"]), 4
+                        )
                     transcript = str(
                         state.get("final")
                         or state.get("text")
@@ -2934,7 +3175,13 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                         )
                         await start_provider()
                         continue
-                    await send({"type": "transcript_final", "text": transcript})
+                    await send(
+                        {
+                            "type": "transcript_final",
+                            "text": transcript,
+                            "diagnostics": diagnostics,
+                        }
+                    )
                     local_intent = _voice_local_intent(transcript)
                     if local_intent is not None:
                         intent, reply = local_intent
@@ -2951,7 +3198,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                                 else "正在回应",
                             }
                         )
-                        await speak_local_reply(reply)
+                        diagnostics = await speak_local_reply(
+                            reply, turn_started_at, diagnostics
+                        )
                         turn = _app().add_voice_practice_turn(
                             session_id=session_id,
                             owner_id=actor_id(),
@@ -2960,6 +3209,7 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                             answer=reply,
                             citations=[],
                             memory_refs=[],
+                            diagnostics=diagnostics,
                             status="completed",
                         )
                         await send(
@@ -2997,7 +3247,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     )
                     if answer_task and not answer_task.done():
                         await cancel_answer("new_turn")
-                    answer_task = asyncio.create_task(answer_turn(transcript))
+                    answer_task = asyncio.create_task(
+                        answer_turn(transcript, turn_started_at, diagnostics)
+                    )
                     await start_provider()
                     continue
                 if command_type == "finish":

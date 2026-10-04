@@ -22,7 +22,8 @@ def _safe_id(value: str, label: str) -> str:
 
 
 def allocate_upload(
-    data: dict[str, Any], owner_id: str, kb_id: str, display_name: str
+    data: dict[str, Any], owner_id: str, kb_id: str, display_name: str,
+    *, content_hash: str = "", version_id: str = ""
 ) -> dict[str, Any]:
     owner = _safe_id(owner_id, "用户")
     kb = _safe_id(kb_id, "知识库")
@@ -30,6 +31,18 @@ def allocate_upload(
     if not name or name in {".", ".."} or "/" in name or "\\" in name:
         raise ValueError("文件名无效")
     index = data.setdefault("doc_index", {})
+    if content_hash:
+        for existing in index.values():
+            if not isinstance(existing, dict) or existing.get("deleted_at"):
+                continue
+            if (
+                existing.get("owner_id") == owner
+                and existing.get("kb_id") == kb
+                and existing.get("content_hash") == content_hash
+            ):
+                duplicate = dict(existing)
+                duplicate["duplicate"] = True
+                return duplicate
     versions = [
         int(item.get("version") or 1)
         for item in index.values()
@@ -40,14 +53,41 @@ def allocate_upload(
     ]
     version = (max(versions) if versions else 0) + 1
     doc_id = "doc-" + uuid4().hex
+    logical_ids = [
+        str(item.get("document_id") or "")
+        for item in index.values()
+        if isinstance(item, dict)
+        and item.get("owner_id") == owner
+        and item.get("kb_id") == kb
+        and item.get("display_name") == name
+        and not item.get("deleted_at")
+        and item.get("document_id")
+    ]
+    logical_document_id = logical_ids[0] if logical_ids else "doclog-" + uuid4().hex
+    previous_rows = [
+        item
+        for item in index.values()
+        if isinstance(item, dict)
+        and item.get("document_id") == logical_document_id
+        and not item.get("deleted_at")
+    ]
+    previous_rows.sort(key=lambda item: int(item.get("version") or 0), reverse=True)
     storage_key = f"{owner}/{kb}/{doc_id}/{name}"
     record = {
         "doc_id": doc_id,
+        # doc_id remains the physical compatibility key.  document_id is the
+        # logical identity used by version/change-set records.
+        "document_id": logical_document_id,
+        "previous_doc_id": str(previous_rows[0].get("doc_id") or "") if previous_rows else "",
         "owner_id": owner,
         "kb_id": kb,
         "display_name": name,
         "storage_key": storage_key,
         "version": version,
+        "version_id": version_id or "",
+        "content_hash": content_hash or "",
+        "structure_hash": "",
+        "version_status": "draft",
         "status": "uploading",
         "chunk_ids": [],
     }
