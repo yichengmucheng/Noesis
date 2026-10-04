@@ -221,7 +221,8 @@ async def extract_and_store(
                     "subject_id": relation["src_entity_id"],
                     "predicate": relation["relation_type"],
                     "object_id": relation["tgt_entity_id"],
-                    "source_version_id": relation.get("source_version_id") or version_id,
+                    "source_version_id": relation.get("source_version_id")
+                    or version_id,
                     "source_chunk_id": relation.get("source_id") or "",
                     "valid_at": relation.get("valid_at") or "",
                 }
@@ -343,8 +344,12 @@ def _write_graph(
             for old_src, old_tgt, old_attrs in list(graph.edges(data=True)):
                 if old_src != src or old_tgt == tgt:
                     continue
-                old_type = str(old_attrs.get("relation_type") or old_attrs.get("keywords") or "")
-                if old_type.split(GRAPH_FIELD_SEP)[0] != str(item.get("relation_type") or ""):
+                old_type = str(
+                    old_attrs.get("relation_type") or old_attrs.get("keywords") or ""
+                )
+                if old_type.split(GRAPH_FIELD_SEP)[0] != str(
+                    item.get("relation_type") or ""
+                ):
                     continue
                 old_attrs["invalid_at"] = current_time()
                 old_attrs["status"] = "superseded"

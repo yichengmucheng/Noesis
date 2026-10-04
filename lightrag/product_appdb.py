@@ -15,7 +15,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 
@@ -1135,20 +1135,46 @@ class AppStore:
                     document_id, owner_id, kb_id, display_name, source_type,
                     current_version_id, status, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)""",
-                (document_id, owner_id, kb_id, display_name, source_type, version_id, now, now),
+                (
+                    document_id,
+                    owner_id,
+                    kb_id,
+                    display_name,
+                    source_type,
+                    version_id,
+                    now,
+                    now,
+                ),
             )
             self._conn.execute(
                 """INSERT OR IGNORE INTO knowledge_versions(
                     version_id, document_id, owner_id, kb_id, content_hash,
                     structure_hash, status, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (version_id, document_id, owner_id, kb_id, content_hash, structure_hash, status, now),
+                (
+                    version_id,
+                    document_id,
+                    owner_id,
+                    kb_id,
+                    content_hash,
+                    structure_hash,
+                    status,
+                    now,
+                ),
             )
             self._conn.execute(
                 """UPDATE knowledge_documents
                    SET display_name = ?, source_type = ?, current_version_id = ?, updated_at = ?
                    WHERE document_id = ? AND owner_id = ? AND kb_id = ?""",
-                (display_name, source_type, version_id, now, document_id, owner_id, kb_id),
+                (
+                    display_name,
+                    source_type,
+                    version_id,
+                    now,
+                    document_id,
+                    owner_id,
+                    kb_id,
+                ),
             )
             _commit_with_retry(self._conn)
         return self.get_knowledge_version(version_id, owner_id, kb_id) or {}
@@ -1176,7 +1202,12 @@ class AppStore:
         return [dict(row) for row in rows]
 
     def save_knowledge_chunks(
-        self, *, owner_id: str, kb_id: str, document_id: str, version_id: str,
+        self,
+        *,
+        owner_id: str,
+        kb_id: str,
+        document_id: str,
+        version_id: str,
         chunks: Iterable[dict[str, Any]],
     ) -> int:
         rows = list(chunks)
@@ -1204,9 +1235,16 @@ class AppStore:
         return len(rows)
 
     def create_knowledge_change_set(
-        self, *, owner_id: str, kb_id: str, document_id: str,
-        old_version_id: str, new_version_id: str, summary: dict[str, Any],
-        diff: list[dict[str, Any]], status: str = "detected",
+        self,
+        *,
+        owner_id: str,
+        kb_id: str,
+        document_id: str,
+        old_version_id: str,
+        new_version_id: str,
+        summary: dict[str, Any],
+        diff: list[dict[str, Any]],
+        status: str = "detected",
     ) -> dict[str, Any]:
         change_set_id = uuid4().hex
         now = _now()
@@ -1217,9 +1255,16 @@ class AppStore:
                     new_version_id, status, summary_json, diff_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    change_set_id, owner_id, kb_id, document_id, old_version_id,
-                    new_version_id, status, json.dumps(summary, ensure_ascii=False),
-                    json.dumps(diff, ensure_ascii=False), now,
+                    change_set_id,
+                    owner_id,
+                    kb_id,
+                    document_id,
+                    old_version_id,
+                    new_version_id,
+                    status,
+                    json.dumps(summary, ensure_ascii=False),
+                    json.dumps(diff, ensure_ascii=False),
+                    now,
                 ),
             )
             _commit_with_retry(self._conn)
@@ -1238,7 +1283,9 @@ class AppStore:
         item = dict(row)
         for key, fallback in (("summary_json", {}), ("diff_json", [])):
             try:
-                item[key.removesuffix("_json")] = json.loads(item.get(key) or json.dumps(fallback))
+                item[key.removesuffix("_json")] = json.loads(
+                    item.get(key) or json.dumps(fallback)
+                )
             except json.JSONDecodeError:
                 item[key.removesuffix("_json")] = fallback
             item.pop(key, None)
@@ -1253,8 +1300,13 @@ class AppStore:
             (owner_id, kb_id, max(1, min(int(limit or 50), 200))),
         )
         return [
-            item for row in rows
-            if (item := self.get_knowledge_change_set(str(row["change_set_id"]), owner_id, kb_id))
+            item
+            for row in rows
+            if (
+                item := self.get_knowledge_change_set(
+                    str(row["change_set_id"]), owner_id, kb_id
+                )
+            )
         ]
 
     def update_knowledge_change_set_status(
@@ -1325,7 +1377,9 @@ class AppStore:
             _commit_with_retry(self._conn)
         return row
 
-    def list_current_knowledge_facts(self, owner_id: str, kb_id: str) -> list[dict[str, Any]]:
+    def list_current_knowledge_facts(
+        self, owner_id: str, kb_id: str
+    ) -> list[dict[str, Any]]:
         rows = self._all(
             """SELECT * FROM knowledge_facts
                WHERE owner_id = ? AND kb_id = ? AND status = 'active'
@@ -1361,7 +1415,9 @@ class AppStore:
                 ),
             )
             _commit_with_retry(self._conn)
-        return self.upsert_knowledge_fact({**fact, "status": "active", "valid_at": fact.get("valid_at") or now})
+        return self.upsert_knowledge_fact(
+            {**fact, "status": "active", "valid_at": fact.get("valid_at") or now}
+        )
 
     def count_documents_untouched(self) -> None:
         return None
