@@ -27,7 +27,9 @@ def content_hash(payload: bytes | str) -> str:
 def structure_hash(document: Any) -> str:
     """Hash structural anchors, not text, so content and layout changes differ."""
     rows: list[str] = []
-    for unit in document.walk() if document is not None and hasattr(document, "walk") else []:
+    for unit in (
+        document.walk() if document is not None and hasattr(document, "walk") else []
+    ):
         rows.append(
             "|".join(
                 (
@@ -55,7 +57,14 @@ def _anchor(chunk: dict[str, Any], index: int) -> str:
     first = refs[0] if refs and isinstance(refs[0], dict) else {}
     location = "/".join(
         str(first.get(key) or "")
-        for key in ("unit_id", "page_number", "slide_number", "section_path", "sheet_name", "cell_range")
+        for key in (
+            "unit_id",
+            "page_number",
+            "slide_number",
+            "section_path",
+            "sheet_name",
+            "cell_range",
+        )
     )
     return location.strip("/") or f"index:{index + 1}"
 
@@ -74,7 +83,9 @@ def stable_chunk_id(document_id: str, chunk: dict[str, Any], index: int = 0) -> 
     return f"schunk-{digest}"
 
 
-def decorate_chunks(document_id: str, chunks: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def decorate_chunks(
+    document_id: str, chunks: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for index, raw in enumerate(chunks):
         row = dict(raw)
@@ -100,6 +111,7 @@ def compare_chunks(
     """Match chunks by stable identity, then use similarity only as fallback."""
     old = decorate_chunks(old_document_id, old_chunks)
     new = decorate_chunks(new_document_id, new_chunks)
+
     # When comparing two versions, the logical document identity is not the
     # physical doc id.  Content plus structural anchor is the cross-version key.
     def cross_key(item: dict[str, Any]) -> str:
@@ -110,9 +122,13 @@ def compare_chunks(
     old_by_hash: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     new_by_hash: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, item in enumerate(old):
-        old_by_hash.setdefault(str(item.get("content_hash") or ""), []).append((index, item))
+        old_by_hash.setdefault(str(item.get("content_hash") or ""), []).append(
+            (index, item)
+        )
     for index, item in enumerate(new):
-        new_by_hash.setdefault(str(item.get("content_hash") or ""), []).append((index, item))
+        new_by_hash.setdefault(str(item.get("content_hash") or ""), []).append(
+            (index, item)
+        )
     matched_old: set[int] = set()
     matched_new: set[int] = set()
     rows: list[dict[str, Any]] = []
@@ -123,14 +139,16 @@ def compare_chunks(
         old_index, old_item = old_by_key[key]
         matched_old.add(old_index)
         matched_new.add(new_index)
-        rows.append({
-            "type": "unchanged",
-            "old_index": old_index + 1,
-            "new_index": new_index + 1,
-            "old": old_item,
-            "new": new_item,
-            "stable_chunk_id": new_item["stable_chunk_id"],
-        })
+        rows.append(
+            {
+                "type": "unchanged",
+                "old_index": old_index + 1,
+                "new_index": new_index + 1,
+                "old": old_item,
+                "new": new_item,
+                "stable_chunk_id": new_item["stable_chunk_id"],
+            }
+        )
 
     # A paragraph can move when text is inserted before it.  A unique content
     # hash is stronger evidence of no content change than its numeric position.
@@ -144,14 +162,16 @@ def compare_chunks(
             continue
         matched_old.add(old_index)
         matched_new.add(new_index)
-        rows.append({
-            "type": "unchanged",
-            "old_index": old_index + 1,
-            "new_index": new_index + 1,
-            "old": old_item,
-            "new": new_item,
-            "stable_chunk_id": new_item["stable_chunk_id"],
-        })
+        rows.append(
+            {
+                "type": "unchanged",
+                "old_index": old_index + 1,
+                "new_index": new_index + 1,
+                "old": old_item,
+                "new": new_item,
+                "stable_chunk_id": new_item["stable_chunk_id"],
+            }
+        )
 
     # Pair remaining chunks at the same structural position when possible.
     for new_index, new_item in enumerate(new):
@@ -175,39 +195,53 @@ def compare_chunks(
             old_item = old[old_index]
             matched_old.add(old_index)
             matched_new.add(new_index)
-            moved = old_item.get("structural_anchor") != new_item.get("structural_anchor")
-            rows.append({
-                "type": "moved" if moved and score >= 0.85 else "modified",
-                "old_index": old_index + 1,
-                "new_index": new_index + 1,
-                "old": old_item,
-                "new": new_item,
-                "similarity": round(score, 6),
-                "stable_chunk_id": new_item["stable_chunk_id"],
-            })
+            moved = old_item.get("structural_anchor") != new_item.get(
+                "structural_anchor"
+            )
+            rows.append(
+                {
+                    "type": "moved" if moved and score >= 0.85 else "modified",
+                    "old_index": old_index + 1,
+                    "new_index": new_index + 1,
+                    "old": old_item,
+                    "new": new_item,
+                    "similarity": round(score, 6),
+                    "stable_chunk_id": new_item["stable_chunk_id"],
+                }
+            )
         else:
             matched_new.add(new_index)
-            rows.append({
-                "type": "added",
-                "old_index": None,
-                "new_index": new_index + 1,
-                "old": None,
-                "new": new_item,
-                "stable_chunk_id": new_item["stable_chunk_id"],
-            })
+            rows.append(
+                {
+                    "type": "added",
+                    "old_index": None,
+                    "new_index": new_index + 1,
+                    "old": None,
+                    "new": new_item,
+                    "stable_chunk_id": new_item["stable_chunk_id"],
+                }
+            )
 
     for old_index, old_item in enumerate(old):
         if old_index not in matched_old:
-            rows.append({
-                "type": "deleted",
-                "old_index": old_index + 1,
-                "new_index": None,
-                "old": old_item,
-                "new": None,
-                "stable_chunk_id": old_item["stable_chunk_id"],
-            })
+            rows.append(
+                {
+                    "type": "deleted",
+                    "old_index": old_index + 1,
+                    "new_index": None,
+                    "old": old_item,
+                    "new": None,
+                    "stable_chunk_id": old_item["stable_chunk_id"],
+                }
+            )
     order = {"added": 0, "modified": 1, "moved": 2, "deleted": 3, "unchanged": 4}
-    return sorted(rows, key=lambda row: (row.get("new_index") or row.get("old_index") or 0, order[row["type"]]))
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.get("new_index") or row.get("old_index") or 0,
+            order[row["type"]],
+        ),
+    )
 
 
 def current_time() -> str:
@@ -229,15 +263,21 @@ def fact_state(
         "valid_at": valid_at or current_time(),
         "invalid_at": invalid_at or "",
         "superseded_by": superseded_by,
-        "status": status if status in {"candidate", "active", "superseded", "retracted", "expired"} else "candidate",
+        "status": status
+        if status in {"candidate", "active", "superseded", "retracted", "expired"}
+        else "candidate",
     }
 
 
 def change_summary(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
-    summary = {name: 0 for name in ("unchanged", "added", "modified", "deleted", "moved")}
+    summary = {
+        name: 0 for name in ("unchanged", "added", "modified", "deleted", "moved")
+    }
     for row in rows:
         kind = str(row.get("type") or "")
         if kind in summary:
             summary[kind] += 1
-    summary["changed"] = sum(summary[name] for name in ("added", "modified", "deleted", "moved"))
+    summary["changed"] = sum(
+        summary[name] for name in ("added", "modified", "deleted", "moved")
+    )
     return summary

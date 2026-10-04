@@ -22,8 +22,13 @@ def _safe_id(value: str, label: str) -> str:
 
 
 def allocate_upload(
-    data: dict[str, Any], owner_id: str, kb_id: str, display_name: str,
-    *, content_hash: str = "", version_id: str = ""
+    data: dict[str, Any],
+    owner_id: str,
+    kb_id: str,
+    display_name: str,
+    *,
+    content_hash: str = "",
+    version_id: str = "",
 ) -> dict[str, Any]:
     owner = _safe_id(owner_id, "用户")
     kb = _safe_id(kb_id, "知识库")
@@ -78,7 +83,9 @@ def allocate_upload(
         # doc_id remains the physical compatibility key.  document_id is the
         # logical identity used by version/change-set records.
         "document_id": logical_document_id,
-        "previous_doc_id": str(previous_rows[0].get("doc_id") or "") if previous_rows else "",
+        "previous_doc_id": str(previous_rows[0].get("doc_id") or "")
+        if previous_rows
+        else "",
         "owner_id": owner,
         "kb_id": kb,
         "display_name": name,

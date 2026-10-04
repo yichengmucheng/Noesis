@@ -967,7 +967,9 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
                     "new": _clean_text(right, 240),
                     "severity": "低"
                     if match["type"] == "unchanged"
-                    else ("高" if mark_numbers and _numbers_changed(left, right) else "中"),
+                    else (
+                        "高" if mark_numbers and _numbers_changed(left, right) else "中"
+                    ),
                 }
             )
         chunk_diffs = chunk_diffs[:80]
@@ -1069,28 +1071,57 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
 
             def facts(ids: set[str]) -> set[tuple[str, str, str]]:
                 names = {
-                    str(node_id): str(attrs.get("entity_name") or attrs.get("name") or node_id)
+                    str(node_id): str(
+                        attrs.get("entity_name") or attrs.get("name") or node_id
+                    )
                     for node_id, attrs in graph.nodes(data=True)
                     if mentions(attrs, ids)
                 }
                 found: set[tuple[str, str, str]] = set()
                 for source, target, attrs in graph.edges(data=True):
                     if mentions(attrs, ids):
-                        found.add((names.get(str(source), str(source)), str(attrs.get("keywords") or attrs.get("relation_type") or "关系"), names.get(str(target), str(target))))
+                        found.add(
+                            (
+                                names.get(str(source), str(source)),
+                                str(
+                                    attrs.get("keywords")
+                                    or attrs.get("relation_type")
+                                    or "关系"
+                                ),
+                                names.get(str(target), str(target)),
+                            )
+                        )
                 return found
 
             old_facts = facts(old_ids)
             new_facts = facts(new_ids)
             for fact in sorted(new_facts - old_facts):
-                fact_diffs.append({"type": "新增事实", "subject": fact[0], "predicate": fact[1], "object": fact[2], "status": "active"})
+                fact_diffs.append(
+                    {
+                        "type": "新增事实",
+                        "subject": fact[0],
+                        "predicate": fact[1],
+                        "object": fact[2],
+                        "status": "active",
+                    }
+                )
             for fact in sorted(old_facts - new_facts):
-                fact_diffs.append({"type": "失效事实", "subject": fact[0], "predicate": fact[1], "object": fact[2], "status": "superseded"})
+                fact_diffs.append(
+                    {
+                        "type": "失效事实",
+                        "subject": fact[0],
+                        "predicate": fact[1],
+                        "object": fact[2],
+                        "status": "superseded",
+                    }
+                )
         except Exception:
             fact_diffs = []
         impact = {
             "changed_chunks": chunk_summary.get("changed", 0),
             "added_chunks": chunk_summary.get("added", 0),
-            "modified_chunks": chunk_summary.get("modified", 0) + chunk_summary.get("moved", 0),
+            "modified_chunks": chunk_summary.get("modified", 0)
+            + chunk_summary.get("moved", 0),
             "deleted_chunks": chunk_summary.get("deleted", 0),
             "fact_changes": len(fact_diffs),
             "qa_changes": len(qa_diffs),
@@ -1864,7 +1895,10 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
     ):
         from lightrag.product_db import public_job
         from lightrag.product_ingest import content_key
-        from lightrag.product_updates import content_hash as update_content_hash, version_id as update_version_id
+        from lightrag.product_updates import (
+            content_hash as update_content_hash,
+            version_id as update_version_id,
+        )
         from lightrag.product_uploads import allocate_upload
 
         fresh = await _read()
@@ -1910,14 +1944,20 @@ def create_product_shell_routes(rag, doc_manager, api_key: Optional[str] = None)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if allocated.get("duplicate"):
-            existing_job = store.latest_for_doc(actor_id(), str(allocated.get("doc_id") or ""))
-            view = public_job(existing_job) if existing_job else {
-                "job_id": "",
-                "job_type": "ingestion",
-                "status": "succeeded",
-                "doc_id": allocated.get("doc_id") or "",
-                "kb_id": kb_id,
-            }
+            existing_job = store.latest_for_doc(
+                actor_id(), str(allocated.get("doc_id") or "")
+            )
+            view = (
+                public_job(existing_job)
+                if existing_job
+                else {
+                    "job_id": "",
+                    "job_type": "ingestion",
+                    "status": "succeeded",
+                    "doc_id": allocated.get("doc_id") or "",
+                    "kb_id": kb_id,
+                }
+            )
             view["message"] = "文件内容未变化，继续使用现有版本"
             view["version_id"] = allocated.get("version_id") or ""
             return view

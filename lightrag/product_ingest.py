@@ -279,7 +279,11 @@ def _write_records(
 
 
 def _write_vectors(
-    working: Path, doc_id: str, kb_id: str, owner_id: str, chunks: list[dict[str, Any]],
+    working: Path,
+    doc_id: str,
+    kb_id: str,
+    owner_id: str,
+    chunks: list[dict[str, Any]],
     previous_doc_id: str = "",
 ) -> None:
     from lightrag.index_manifest import save_manifest
@@ -632,7 +636,10 @@ def run_ingestion(
                                 row
                                 for row in _kv(working, "text_chunks").values()
                                 if isinstance(row, dict)
-                                and str(row.get("doc_id") or row.get("full_doc_id") or "") == previous_doc_id
+                                and str(
+                                    row.get("doc_id") or row.get("full_doc_id") or ""
+                                )
+                                == previous_doc_id
                             ]
                             diff = compare_chunks(
                                 previous_rows,
@@ -644,12 +651,16 @@ def run_ingestion(
                                 owner_id=owner_id,
                                 kb_id=kb_id,
                                 document_id=logical_document_id,
-                                old_version_id=str(snapshot.get("previous_version_id") or ""),
+                                old_version_id=str(
+                                    snapshot.get("previous_version_id") or ""
+                                ),
                                 new_version_id=new_version_id,
                                 summary=change_summary(diff),
                                 diff=diff,
                             )
-                            snapshot["change_set_id"] = change_set.get("change_set_id") or ""
+                            snapshot["change_set_id"] = (
+                                change_set.get("change_set_id") or ""
+                            )
                 except Exception as exc:
                     logger.warning("知识版本记录写入失败，不阻断旧版入库：%s", exc)
             elif stage == "embedding":
@@ -779,8 +790,12 @@ def run_ingestion(
                     output_summary={
                         "chunk_ids": [item["chunk_id"] for item in chunks],
                         "content_hash": snapshot.get("content_hash", ""),
-                        "vectors_reused": sum(1 for item in chunks if item.get("vector_reused")),
-                        "vectors_embedded": sum(1 for item in chunks if not item.get("vector_reused")),
+                        "vectors_reused": sum(
+                            1 for item in chunks if item.get("vector_reused")
+                        ),
+                        "vectors_embedded": sum(
+                            1 for item in chunks if not item.get("vector_reused")
+                        ),
                     },
                 )
         except StageError as exc:
